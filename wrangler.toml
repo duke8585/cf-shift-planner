@@ -1,0 +1,25 @@
+name = "shift-planner"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+# Builds public/styles.css (Tailwind) and copies the self-hosted font before dev/deploy.
+[build]
+command = "npm run build"
+watch_dir = ["src/styles.css", "public/app.js", "public/index.html"]
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shift-planner-db"
+database_id = "c4d9e25d-2145-4444-97e5-f4b9b69527d6"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]

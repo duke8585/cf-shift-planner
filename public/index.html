@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafaf9">
+  <title>Shift Planner</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x2='1' y2='1'><stop stop-color='%23fb923c'/><stop offset='1' stop-color='%23c2410c'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='url(%23g)'/></svg>">
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="min-h-dvh font-sans">
+  <header class="sticky top-0 z-30 border-b border-stone-200/70 bg-stone-50/80 backdrop-blur-lg">
+    <div class="mx-auto flex max-w-5xl items-center px-4 py-3 sm:px-6">
+      <a href="#/" class="flex items-center gap-2.5 rounded-xl text-xl font-bold tracking-tight text-stone-900">
+        <span class="size-8 rounded-[10px] bg-linear-to-br from-orange-400 to-orange-700 shadow-sm shadow-orange-700/30"></span>
+        Shift Planner
+      </a>
+    </div>
+  </header>
+
+  <div id="update-banner" hidden class="sticky top-[57px] z-20 bg-stone-900 text-white">
+    <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+      <span class="font-medium">A new version of this page is available.</span>
+      <button type="button" onclick="location.reload()" class="btn btn-sm text-stone-900">Reload</button>
+    </div>
+  </div>
+
+  <main id="app" class="mx-auto max-w-5xl px-4 pt-6 pb-32 sm:px-6"></main>
+
+  <div id="toast" hidden role="status" aria-live="polite"
+    class="toast-in fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-4 rounded-full bg-stone-900 py-2.5 pr-2.5 pl-5 text-white shadow-2xl"></div>
+
+  <dialog id="modal" class="m-auto w-[min(26rem,calc(100%-2rem))] rounded-3xl p-0 shadow-2xl backdrop:bg-stone-900/50 backdrop:backdrop-blur-sm">
+    <form method="dialog" class="flex flex-col gap-4 p-6">
+      <div>
+        <h3 id="modal-title" class="text-xl font-bold"></h3>
+        <p id="modal-text" class="mt-1 text-stone-600"></p>
+      </div>
+      <input id="modal-input" type="password" autocomplete="current-password" class="input">
+      <p id="modal-error" hidden class="font-semibold text-rose-700"></p>
+      <div class="flex justify-end gap-3">
+        <button type="button" id="modal-cancel" class="btn">Cancel</button>
+        <button value="ok" id="modal-ok" class="btn btn-primary">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
