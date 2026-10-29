@@ -92,20 +92,27 @@
 /* ---------- print: overview only, landscape, compact ---------- */
 @page { size: A4 landscape; margin: 10mm; }
 
-@media print {
-  html { font-size: 11pt; background: #fff; }
-  body { min-height: 0 !important; }
-  * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-shadow: none !important; }
-  .no-print, header, #toast, #update-banner, dialog { display: none !important; }
-  .print-only { display: block !important; }
-  main { max-width: none !important; padding: 0 !important; }
-  .print-wrap { overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; outline: none !important; --tw-ring-shadow: 0 0 #0000 !important; }
-  table { font-size: 10pt; }
-  thead { display: table-header-group; }
-  tr { break-inside: avoid; }
-  th, td { padding: 4pt 6pt !important; }
-  .pill { box-shadow: none; --tw-ring-shadow: 0 0 #0000; padding: 0 !important; background: none; font-weight: 500; }
-  .pill .avatar { display: none; }
-  .pill + .pill::before { content: "·"; margin-right: 4pt; color: #a8a29e; }
-  .pills { gap: 4pt !important; }
+/* Applied via html.printing (set by app.js on beforeprint) rather than @media print, so the
+   page can be measured in its print layout and zoomed to fit one sheet before printing. */
+html.printing {
+  font-size: 11pt;
+  background: #fff;
+  & body { min-height: 0 !important; background: #fff; }
+  & * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-shadow: none !important; }
+  & .no-print, & header, & #toast, & #update-banner, & dialog { display: none !important; }
+  & main { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+  & .print-wrap { overflow: visible !important; border-radius: 0 !important; --tw-ring-shadow: 0 0 #0000 !important; }
+  & table { font-size: 10pt; border: 1px solid #a8a29e; }
+  & thead { display: table-header-group; }
+  & tr { break-inside: avoid; }
+  & th, & td { padding: 4pt 6pt !important; border-color: #a8a29e !important; }
+  /* role stripe: a real border instead of the inset shadow used on screen */
+  & td[style*="--role"] { border-left: 3pt solid var(--role) !important; }
+  & th[style*="--role"] { border-top: 3pt solid var(--role) !important; }
+  /* too big for one sheet: one sheet per day */
+  &.print-per-day tr.day-row:not(:first-child) { break-before: page; }
+  & .pill { --tw-ring-shadow: 0 0 #0000; padding: 0 !important; background: none; font-weight: 500; }
+  & .pill .avatar { display: none; }
+  & .pill + .pill::before { content: "·"; margin-right: 4pt; color: #78716c; }
+  & .pills { gap: 4pt !important; }
 }

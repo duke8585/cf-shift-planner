@@ -249,6 +249,46 @@ setInterval(() => {
   if (document.hidden || !state.planId || !["signup", "overview"].includes(state.tab)) return;
   if (!document.activeElement?.matches("input")) refreshPlan();
 }, 30000);
+// Print: switch to the print layout at A4-landscape width (277 x 190 mm printable at 10 mm margins),
+// measure it and zoom it down so it fits one sheet. If that would go below MIN_PRINT_ZOOM (unreadable),
+// print one sheet per day instead, zoomed so the tallest day fits.
+const PRINT_W = (277 / 25.4) * 96;
+const PRINT_H = (190 / 25.4) * 96;
+const MIN_PRINT_ZOOM = 0.45;
+window.addEventListener("beforeprint", () => {
+  const root = document.documentElement;
+  root.classList.add("printing");
+  root.classList.remove("print-per-day");
+  app.style.zoom = "";
+  app.style.width = `${PRINT_W}px`;
+  const fitWidth = (PRINT_W / app.scrollWidth) * 0.98;
+  let zoom = Math.min(1, fitWidth, (PRINT_H / app.scrollHeight) * 0.97);
+
+  const dayRows = [...app.querySelectorAll("tr.day-row")];
+  if (zoom < MIN_PRINT_ZOOM && dayRows.length > 1) {
+    root.classList.add("print-per-day");
+    const top = app.getBoundingClientRect().top;
+    const head = app.querySelector("thead").getBoundingClientRect();
+    const tableBottom = app.querySelector("table").getBoundingClientRect().bottom;
+    const tallest = Math.max(
+      ...dayRows.map((row, i) => {
+        const start = row.getBoundingClientRect().top;
+        const end = dayRows[i + 1]?.getBoundingClientRect().top ?? tableBottom;
+        return (i === 0 ? start - top : head.height) + (end - start); // first sheet also carries the title
+      }),
+    );
+    zoom = Math.min(1, fitWidth, (PRINT_H / tallest) * 0.97);
+  }
+  zoom = Math.max(MIN_PRINT_ZOOM, zoom);
+  app.style.zoom = String(zoom);
+  app.style.width = `${PRINT_W / zoom}px`; // use the full sheet width at the reduced size
+});
+window.addEventListener("afterprint", () => {
+  document.documentElement.classList.remove("printing", "print-per-day");
+  app.style.zoom = "";
+  app.style.width = "";
+});
+
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.planId && state.tab !== "builder") refreshPlan();
 });
@@ -680,7 +720,7 @@ function renderMatrix() {
     if (slot.date !== lastDate) {
       lastDate = slot.date;
       rows.push(
-        h("tr", null,
+        h("tr", { class: "day-row" },
           h("th", { colspan: roles.length + 1, class: "border-b border-stone-200 bg-stone-100 px-4 py-2.5 text-left text-lg font-bold" }, fmtDate(slot.date)),
         ),
       );
