@@ -20,6 +20,8 @@ npm run db:migrate:remote   # applies new files in migrations/
 npm run deploy
 ```
 
+Cloudflare setup, data model and design decisions: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Layout
 
 - `src/worker.js` - `/api/*` handlers; everything else is served from `public/`
