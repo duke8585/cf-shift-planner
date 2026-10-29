@@ -22,6 +22,9 @@ const ROLE_PALETTE = [
   ["#6366f1", "#e0e7ff", "#3730a3"], // indigo
 ];
 
+// Desktop column layout of the builder (header + rows); phones stack each row as a card.
+const BUILDER_COLS = "sm:grid-cols-[minmax(9rem,1.4fr)_minmax(9rem,1fr)_6.5rem_6.5rem_4.5rem_5.5rem_auto]";
+
 const state = {
   planId: null,
   data: null, // GET /plans/:id response
@@ -101,6 +104,16 @@ function fmtDayShort(iso) {
 
 function fmtWhen(iso) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// "5 minutes ago", "yesterday", "3 days ago" ...
+function fmtAgo(iso) {
+  const seconds = (new Date(iso) - Date.now()) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  for (const [unit, size] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
+  }
+  return "just now";
 }
 
 function getLastName() {
@@ -228,6 +241,7 @@ function emptyCard(text) {
 
 function route() {
   const [, page, id, tab] = location.hash.replace(/^#/, "").split("/");
+  document.getElementById("gh-link").hidden = page === "plan" && !!id;
   if (page === "plan" && id) {
     if (id !== state.planId) {
       Object.assign(state, { planId: id, data: null, unlocked: false, rows: null, versions: null });
@@ -338,12 +352,16 @@ function planCard(plan) {
   return h("div", { class: "card flex flex-col gap-4" },
     h("div", null,
       h("a", { class: "text-xl font-bold tracking-tight hover:text-orange-700", href: `#/plan/${plan.id}` }, plan.name, plan.has_admin_password ? " 🔒" : ""),
-      h("p", { class: "mt-1 text-base text-stone-500" }, `Created ${fmtWhen(plan.created_at)}`),
+      h("p", { class: "mt-1 text-base text-stone-600" },
+        "Updated ",
+        h("time", { datetime: plan.updated_at, title: fmtWhen(plan.updated_at), class: "font-semibold text-stone-800" }, fmtAgo(plan.updated_at)),
+      ),
+      h("p", { class: "text-sm text-stone-500" }, `Created ${fmtWhen(plan.created_at)}`),
     ),
-    h("div", { class: "mt-auto flex flex-wrap gap-2" },
-      h("a", { class: "btn btn-sm btn-primary", href: `#/plan/${plan.id}` }, "Open"),
+    h("div", { class: "mt-auto grid grid-cols-3 gap-2" },
+      h("a", { class: "btn btn-sm btn-primary px-2", href: `#/plan/${plan.id}` }, "Open"),
       h("button", {
-        class: "btn btn-sm",
+        class: "btn btn-sm px-2",
         onclick: async () => {
           const name = prompt("Name for the copy:", `${plan.name} (copy)`);
           if (name === null) return;
@@ -357,7 +375,7 @@ function planCard(plan) {
         },
       }, "Duplicate"),
       h("button", {
-        class: "btn btn-sm btn-danger",
+        class: "btn btn-sm btn-danger px-2",
         onclick: async () => {
           const pw = await adminAuth(
             { id: plan.id, hasAdminPassword: !!plan.has_admin_password },
@@ -431,12 +449,12 @@ function renderPlan() {
         },
       }, "Copy share link"),
     ),
-    h("nav", { class: "no-print mt-6 mb-8 flex gap-1 overflow-x-auto rounded-full bg-stone-200/70 p-1.5" },
+    h("nav", { class: "no-print mt-6 mb-8 flex gap-1 rounded-full max-[379px]:gap-0 max-[379px]:p-1 bg-stone-200/70 p-1.5" },
       TABS.map(([key, label]) =>
         h("button", {
           class: state.tab === key
-            ? "min-h-11 flex-1 cursor-pointer rounded-full bg-white px-4 font-semibold whitespace-nowrap text-stone-900 shadow-sm"
-            : "min-h-11 flex-1 cursor-pointer rounded-full px-4 font-semibold whitespace-nowrap text-stone-600 hover:text-stone-900",
+            ? "min-h-11 flex-auto cursor-pointer rounded-full bg-white px-2 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] font-semibold text-stone-900 shadow-sm sm:px-4 sm:text-lg"
+            : "min-h-11 flex-auto cursor-pointer rounded-full px-2 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] font-semibold text-stone-600 hover:text-stone-900 sm:px-4 sm:text-lg",
           "aria-current": state.tab === key ? "page" : null,
           onclick: () => (location.hash = `#/plan/${plan.id}/${key}`),
         }, label),
@@ -721,13 +739,15 @@ function renderMatrix() {
       lastDate = slot.date;
       rows.push(
         h("tr", { class: "day-row" },
-          h("th", { colspan: roles.length + 1, class: "border-b border-stone-200 bg-stone-100 px-4 py-2.5 text-left text-lg font-bold" }, fmtDate(slot.date)),
+          h("th", { colspan: roles.length + 1, class: "border-b border-stone-200 bg-stone-100 px-4 py-2.5 text-left text-lg font-bold" },
+            h("span", { class: "sticky left-4" }, fmtDate(slot.date)),
+          ),
         ),
       );
     }
     rows.push(
       h("tr", null,
-        h("td", { class: "w-px border-b border-stone-100 px-4 py-3 align-top text-lg font-bold whitespace-nowrap tabular-nums" }, slot.time),
+        h("td", { class: "sticky left-0 z-[1] w-px border-b border-stone-100 bg-white px-3 py-3 align-top text-lg font-bold whitespace-nowrap tabular-nums sm:px-4" }, slot.time),
         roles.map((role) => {
           const key = `${role}|${slot.date}|${slot.time}`;
           if (covered.has(key)) return null;
@@ -765,7 +785,7 @@ function renderMatrix() {
       h("table", { class: "w-full border-collapse text-left" },
         h("thead", null,
           h("tr", null,
-            h("th", { class: "border-b border-stone-200 px-4 py-3 text-base font-semibold text-stone-500" }, "Time"),
+            h("th", { class: "sticky left-0 z-[1] border-b border-stone-200 bg-white px-3 py-3 text-base font-semibold text-stone-500 sm:px-4" }, "Time"),
             roles.map((r) =>
               h("th", { class: "border-b border-l border-stone-200 border-t-4 border-t-(--role) px-3 py-3", style: roleStyle(r) }, roleChip(r)),
             ),
@@ -781,7 +801,7 @@ function overviewCell(shift, people, span) {
   const open = shift.capacity - people.length;
   const rowspan = span > 1 ? span : null;
   const range = rowspan && h("div", { class: "mb-1.5 text-sm font-semibold text-stone-500 tabular-nums" }, `${shift.startTime}–${shift.endTime}`);
-  const base = "min-w-44 border-b border-l border-stone-100 px-3 py-3 align-top shadow-[inset_4px_0_0_var(--role)]";
+  const base = "min-w-36 border-b border-l sm:min-w-44 border-stone-100 px-3 py-3 align-top shadow-[inset_4px_0_0_var(--role)]";
   if (!people.length) {
     return h("td", { class: `${base} bg-red-200`, rowspan, style: roleStyle(shift.role) },
       range,
@@ -826,34 +846,30 @@ function renderBuilder() {
       h("button", { class: "btn btn-primary mt-2", onclick: unlockBuilder }, "Edit layout"),
     );
   }
-  const tbody = h("tbody");
+  const list = h("div", { class: "flex flex-col gap-3 sm:gap-0" });
   const counter = h("span", { class: "text-stone-500" });
   const redraw = () => {
     const colors = computeRoleColors(state.rows.map((r) => (r.role || "").trim()).filter(Boolean));
-    tbody.replaceChildren(...state.rows.map((row, i) => builderRow(row, i, redraw, colors)));
+    list.replaceChildren(...state.rows.map((row, i) => builderRow(row, i, redraw, colors)));
     counter.textContent = `${state.rows.length} rows`;
   };
   redraw();
 
   return h("div", { class: "flex flex-col gap-5" },
-    h("div", { class: "flex flex-wrap items-center gap-3" },
+    // stays reachable while scrolling through long layouts
+    h("div", { class: "sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 bg-stone-50/90 px-4 py-3 backdrop-blur-lg sm:-mx-6 sm:px-6" },
       h("button", { class: "btn btn-primary", onclick: saveLayout }, "Save layout"),
       h("button", { class: "btn", onclick: cancelBuilder }, "Cancel"),
       h("span", { class: "flex-1" }),
       counter,
     ),
     quickGenerate(redraw),
-    h("div", { class: "overflow-x-auto rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/80" },
-      h("table", { class: "w-full border-collapse text-left" },
-        h("thead", null,
-          h("tr", null,
-            ["Role", "Date", "Start", "End", "Spots", "", ""].map((t) =>
-              h("th", { class: "px-3 pt-4 pb-2 text-sm font-semibold tracking-wide text-stone-500 uppercase" }, t),
-            ),
-          ),
-        ),
-        tbody,
+    // phone: one card per row; desktop: one line per row inside a single card
+    h("div", { class: "sm:overflow-hidden sm:rounded-3xl sm:bg-white sm:shadow-sm sm:ring-1 sm:ring-stone-200/80" },
+      h("div", { class: `hidden gap-2 px-4 pt-4 pb-2 text-sm font-semibold tracking-wide text-stone-500 uppercase sm:grid ${BUILDER_COLS}` },
+        ["Role", "Date", "Start", "End", "Spots", "", ""].map((t) => h("span", null, t)),
       ),
+      list,
     ),
     h("div", null,
       h("button", {
@@ -869,36 +885,46 @@ function renderBuilder() {
 }
 
 function builderRow(row, i, redraw, colors) {
-  const bind = (field, props) =>
+  // Labels are visible on phones only; on desktop the header row names the columns.
+  const field = (label, span, input) =>
+    h("label", { class: `flex min-w-0 flex-col gap-1 text-sm font-semibold text-stone-500 ${span} sm:col-span-1` },
+      h("span", { class: "sm:hidden" }, label),
+      input,
+    );
+  const bind = (key, { label, ...props }) =>
     h("input", {
-      class: "input min-h-11 text-base",
+      class: "input min-h-11 px-3 text-base",
+      "aria-label": label,
       ...props,
-      value: row[field] ?? "",
-      oninput: (e) => (row[field] = props.type === "number" ? Number(e.target.value) : e.target.value),
+      value: row[key] ?? "",
+      oninput: (e) => (row[key] = props.type === "number" ? Number(e.target.value) : e.target.value),
     });
   const signupCount = row.id ? state.data.signups.filter((u) => u.shiftId === row.id).length : 0;
   const role = (row.role || "").trim();
-  return h("tr", { class: row.dupe ? "bg-rose-50" : "", style: role ? roleStyle(role, colors) : null },
-    h("td", { class: "border-t border-stone-100 py-2 pr-2 pl-4" },
-      h("div", { class: "flex items-center gap-2.5" },
-        h("span", { class: role ? "size-3.5 flex-none rounded-full bg-(--role)" : "size-3.5 flex-none rounded-full bg-stone-200", "aria-hidden": "true" }),
-        h("input", {
-          class: "input min-h-11 min-w-32 text-base font-semibold",
-          placeholder: "Role",
-          maxlength: 100,
-          value: row.role ?? "",
-          oninput: (e) => (row.role = e.target.value),
-          onchange: redraw, // recolor once the name is final
-        }),
-      ),
+  return h("div", {
+    class: `grid grid-cols-2 items-end gap-x-2 gap-y-3 rounded-3xl p-4 ring-1 sm:items-center sm:gap-y-0 sm:rounded-none sm:border-t sm:border-stone-100 sm:px-4 sm:py-2 sm:shadow-none sm:ring-0 ${BUILDER_COLS} ${
+      row.dupe ? "bg-rose-50 ring-rose-300" : "bg-white shadow-sm ring-stone-200/80"}`,
+    style: role ? roleStyle(role, colors) : null,
+  },
+    h("div", { class: "col-span-2 flex items-center gap-2.5 sm:col-span-1" },
+      h("span", { class: role ? "size-3.5 flex-none rounded-full bg-(--role)" : "size-3.5 flex-none rounded-full bg-stone-200", "aria-hidden": "true" }),
+      h("input", {
+        class: "input min-h-11 px-3 text-base font-semibold",
+        placeholder: "Role",
+        "aria-label": "Role",
+        maxlength: 100,
+        value: row.role ?? "",
+        oninput: (e) => (row.role = e.target.value),
+        onchange: redraw, // recolor once the name is final
+      }),
     ),
-    h("td", { class: "border-t border-stone-100 p-2" }, bind("date", { type: "date" })),
-    h("td", { class: "border-t border-stone-100 p-2" }, bind("startTime", { type: "time", "aria-label": "Start" })),
-    h("td", { class: "border-t border-stone-100 p-2" }, bind("endTime", { type: "time", "aria-label": "End (optional)" })),
-    h("td", { class: "border-t border-stone-100 p-2" }, bind("capacity", { type: "number", min: 1, max: 1000, class: "input min-h-11 w-20 text-base" })),
-    h("td", { class: "border-t border-stone-100 p-2 text-sm font-semibold whitespace-nowrap text-stone-500" }, signupCount ? `${signupCount} signed up` : ""),
-    h("td", { class: "border-t border-stone-100 py-2 pr-4 pl-2 whitespace-nowrap" },
-      h("div", { class: "flex gap-1.5" },
+    field("Date", "col-span-2", bind("date", { type: "date", label: "Date" })),
+    field("Start", "col-span-1", bind("startTime", { type: "time", label: "Start" })),
+    field("End", "col-span-1", bind("endTime", { type: "time", label: "End (optional)" })),
+    field("Spots", "col-span-1", bind("capacity", { type: "number", min: 1, max: 1000, label: "Spots" })),
+    h("div", { class: "self-center text-sm font-semibold text-stone-500 max-sm:pt-5" }, signupCount ? `${signupCount} signed up` : ""),
+    h("div", { class: "col-span-2 sm:col-span-1" },
+      h("div", { class: "flex justify-end gap-1.5" },
         h("button", {
           class: "btn btn-sm px-3",
           title: "Duplicate row",
@@ -973,8 +999,8 @@ function quickGenerate(redraw) {
     h("p", { class: "mt-2 text-base text-stone-600" }, "Creates one row per day and time slot, e.g. Bar from 14:00 to 22:00 in 2-hour slots gives 14–16, 16–18, 18–20, 20–22."),
     h("form", { class: "mt-5 grid grid-cols-2 items-end gap-4 sm:grid-cols-4", onsubmit: generate },
       h("div", { class: "col-span-2" }, field("Role", f.role)),
-      field("Date from", f.from),
-      field("Date to", f.to),
+      h("div", { class: "col-span-2 sm:col-span-1" }, field("Date from", f.from)),
+      h("div", { class: "col-span-2 sm:col-span-1" }, field("Date to", f.to)),
       field("Start time", f.start),
       field("End time", f.end),
       field("Slot length (hours)", f.hours),
@@ -1046,24 +1072,16 @@ async function renderVersions(container) {
   const latest = state.versions[0]?.version_number;
   container.replaceChildren(
     h("p", { class: "mb-5 text-stone-600" }, "Every change is saved as a version (last 100 kept). Restoring creates a new version, so it can be undone too."),
-    h("div", { class: "overflow-x-auto rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/80" },
-      h("table", { class: "w-full border-collapse text-left" },
-        h("thead", null,
-          h("tr", null, ["#", "When", "Change", ""].map((t) => h("th", { class: "px-4 pt-4 pb-2 text-sm font-semibold tracking-wide text-stone-500 uppercase" }, t))),
-        ),
-        h("tbody", null,
-          state.versions.map((v) =>
-            h("tr", null,
-              h("td", { class: "border-t border-stone-100 px-4 py-3 font-semibold text-stone-500 tabular-nums" }, v.version_number),
-              h("td", { class: "border-t border-stone-100 px-4 py-3 whitespace-nowrap" }, fmtWhen(v.created_at)),
-              h("td", { class: "border-t border-stone-100 px-4 py-3" }, v.description),
-              h("td", { class: "border-t border-stone-100 px-4 py-3 text-right" },
-                v.version_number === latest
-                  ? h("span", { class: "badge bg-stone-100 text-stone-600" }, "current")
-                  : h("button", { class: "btn btn-sm", onclick: () => restoreVersion(v.version_number) }, "Restore"),
-              ),
-            ),
+    h("ol", { class: "divide-y divide-stone-100 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/80" },
+      state.versions.map((v) =>
+        h("li", { class: "flex items-center gap-4 px-4 py-3.5 sm:px-5" },
+          h("div", { class: "min-w-0 flex-1" },
+            h("div", { class: "text-sm font-semibold text-stone-500 tabular-nums" }, `#${v.version_number} · ${fmtWhen(v.created_at)}`),
+            h("div", { class: "break-words" }, v.description),
           ),
+          v.version_number === latest
+            ? h("span", { class: "badge flex-none bg-stone-100 text-stone-600" }, "current")
+            : h("button", { class: "btn btn-sm flex-none", onclick: () => restoreVersion(v.version_number) }, "Restore"),
         ),
       ),
     ),

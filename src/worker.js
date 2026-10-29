@@ -61,7 +61,9 @@ async function route(request, db, parts) {
 
 async function listPlans(db) {
   const { results } = await db
-    .prepare("SELECT id, name, created_at, admin_password_hash IS NOT NULL AS has_admin_password FROM plans ORDER BY created_at DESC")
+    .prepare(
+      "SELECT id, name, created_at, updated_at, admin_password_hash IS NOT NULL AS has_admin_password FROM plans ORDER BY created_at DESC",
+    )
     .all();
   return json({ plans: results });
 }
