@@ -2,12 +2,7 @@
 
 // ---------- state ----------
 
-const TABS = [
-  ["signup", "Sign up"],
-  ["overview", "Overview"],
-  ["builder", "Builder"],
-  ["versions", "Versions"],
-];
+const TABS = ["signup", "overview", "builder", "versions"];
 
 // [dot, soft background, ink] per role, ordered so neighbours contrast strongly.
 // Greens and reds are left out: they mean "full" / "open".
@@ -43,6 +38,44 @@ const state = {
 const app = document.getElementById("app");
 document.getElementById("modal-cancel").addEventListener("click", () => document.getElementById("modal").close());
 
+// Texts that live in index.html, plus the DE/EN switch in the header.
+function applyStaticTexts() {
+  document.documentElement.lang = lang;
+  const set = (id, text) => (document.getElementById(id).textContent = text);
+  set("brand-name", t("appName"));
+  set("update-text", t("updateAvailable"));
+  set("update-reload", t("reload"));
+  set("modal-cancel", t("cancel"));
+  set("modal-ok", t("ok"));
+  const gh = document.getElementById("gh-link");
+  gh.title = t("ghTitle");
+  gh.setAttribute("aria-label", t("ghTitle"));
+
+  const sw = document.getElementById("lang-switch");
+  sw.setAttribute("aria-label", t("language"));
+  sw.replaceChildren(
+    ...LANGS.map((code) =>
+      h("button", {
+        type: "button",
+        lang: code,
+        "aria-pressed": String(code === lang),
+        class: code === lang
+          ? "min-h-9 min-w-11 cursor-pointer rounded-full bg-white px-2.5 text-base font-bold text-stone-900 shadow-sm"
+          : "min-h-9 min-w-11 cursor-pointer rounded-full px-2.5 text-base font-semibold text-stone-500 hover:text-stone-900",
+        onclick: () => {
+          if (code === lang) return;
+          setLang(code);
+          applyStaticTexts();
+          // keep unsaved builder edits; everything else just re-renders
+          if (state.planId && state.data) renderPlan();
+          else route();
+        },
+      }, code.toUpperCase()),
+    ),
+  );
+}
+applyStaticTexts();
+
 // ---------- helpers ----------
 
 function h(tag, props, ...children) {
@@ -71,7 +104,8 @@ async function api(method, path, body) {
   checkVersion(res.headers.get("x-app-version"));
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || `Request failed (${res.status})`);
+    const message = data.code && STRINGS.en[`err_${data.code}`] ? t(`err_${data.code}`, data.params || {}) : data.error;
+    const err = new Error(message || t("requestFailed", res.status));
     err.status = res.status;
     throw err;
   }
@@ -91,29 +125,29 @@ function parseDate(iso) {
 }
 
 function fmtDate(iso) {
-  return parseDate(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return parseDate(iso).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function fmtDayLong(iso) {
-  return parseDate(iso).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  return parseDate(iso).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 }
 
 function fmtDayShort(iso) {
-  return parseDate(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return parseDate(iso).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 }
 
 function fmtWhen(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 }
 
 // "5 minutes ago", "yesterday", "3 days ago" ...
 function fmtAgo(iso) {
   const seconds = (new Date(iso) - Date.now()) / 1000;
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: "auto" });
   for (const [unit, size] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
   }
-  return "just now";
+  return t("justNow");
 }
 
 function getLastName() {
@@ -225,7 +259,7 @@ async function adminAuth(plan, confirmText) {
   const known = state.passwords.get(plan.id);
   if (known) return confirm(confirmText) ? known : null;
   const pw = await askPassword({
-    title: "Admin password",
+    title: t("adminPassword"),
     text: confirmText,
     verify: (p) => api("POST", `/plans/${plan.id}/verify`, { adminPassword: p }),
   });
@@ -246,7 +280,7 @@ function route() {
     if (id !== state.planId) {
       Object.assign(state, { planId: id, data: null, unlocked: false, rows: null, versions: null });
     }
-    state.tab = TABS.some(([key]) => key === tab) ? tab : "signup";
+    state.tab = TABS.includes(tab) ? tab : "signup";
     renderPlan();
   } else {
     state.planId = null;
@@ -310,14 +344,14 @@ document.addEventListener("visibilitychange", () => {
 // ---------- home ----------
 
 async function renderHome() {
-  document.title = "Shift Planner";
-  const nameInput = h("input", { class: "input", placeholder: "e.g. Summer Festival 2026", required: true, maxlength: 200 });
-  const pwInput = h("input", { class: "input", type: "password", placeholder: "Optional", autocomplete: "new-password" });
-  const list = h("div", { class: "grid gap-4 sm:grid-cols-2" }, h("p", { class: "text-stone-500" }, "Loading…"));
+  document.title = t("appName");
+  const nameInput = h("input", { class: "input", placeholder: t("planNamePh"), required: true, maxlength: 200 });
+  const pwInput = h("input", { class: "input", type: "password", placeholder: t("optional"), autocomplete: "new-password" });
+  const list = h("div", { class: "grid gap-4 sm:grid-cols-2" }, h("p", { class: "text-stone-500" }, t("loading")));
 
   app.replaceChildren(
-    h("h1", { class: "text-3xl font-bold tracking-tight sm:text-4xl" }, "Shift plans"),
-    h("p", { class: "mt-2 text-lg text-stone-600" }, "Create a plan, build the shift layout, then share the link so people can sign up."),
+    h("h1", { class: "text-3xl font-bold tracking-tight sm:text-4xl" }, t("home_title")),
+    h("p", { class: "mt-2 text-lg text-stone-600" }, t("home_intro")),
     h("form", {
       class: "card mt-6 grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]",
       onsubmit: async (e) => {
@@ -332,17 +366,17 @@ async function renderHome() {
         }
       },
     },
-      h("label", { class: "label" }, "Plan name", nameInput),
-      h("label", { class: "label" }, "Admin password", pwInput),
-      h("button", { class: "btn btn-primary" }, "Create plan"),
+      h("label", { class: "label" }, t("planName"), nameInput),
+      h("label", { class: "label" }, t("adminPassword"), pwInput),
+      h("button", { class: "btn btn-primary" }, t("createPlan")),
     ),
-    h("h2", { class: "mt-12 mb-4 text-2xl font-bold tracking-tight" }, "Existing plans"),
+    h("h2", { class: "mt-12 mb-4 text-2xl font-bold tracking-tight" }, t("existingPlans")),
     list,
   );
 
   try {
     const { plans } = await api("GET", "/plans");
-    list.replaceChildren(...(plans.length ? plans.map(planCard) : [h("p", { class: "text-stone-500" }, "No plans yet.")]));
+    list.replaceChildren(...(plans.length ? plans.map(planCard) : [h("p", { class: "text-stone-500" }, t("noPlans"))]));
   } catch (err) {
     list.replaceChildren(h("p", { class: "font-semibold text-rose-700" }, err.message));
   }
@@ -353,44 +387,44 @@ function planCard(plan) {
     h("div", null,
       h("a", { class: "text-xl font-bold tracking-tight hover:text-orange-700", href: `#/plan/${plan.id}` }, plan.name, plan.has_admin_password ? " 🔒" : ""),
       h("p", { class: "mt-1 text-base text-stone-600" },
-        "Updated ",
+        t("updatedPrefix"),
         h("time", { datetime: plan.updated_at, title: fmtWhen(plan.updated_at), class: "font-semibold text-stone-800" }, fmtAgo(plan.updated_at)),
       ),
-      h("p", { class: "text-sm text-stone-500" }, `Created ${fmtWhen(plan.created_at)}`),
+      h("p", { class: "text-sm text-stone-500" }, t("created", fmtWhen(plan.created_at))),
     ),
     h("div", { class: "mt-auto grid grid-cols-3 gap-2" },
-      h("a", { class: "btn btn-sm btn-primary px-2", href: `#/plan/${plan.id}` }, "Open"),
+      h("a", { class: "btn btn-sm btn-primary px-2", href: `#/plan/${plan.id}` }, t("open")),
       h("button", {
         class: "btn btn-sm px-2",
         onclick: async () => {
-          const name = prompt("Name for the copy:", `${plan.name} (copy)`);
+          const name = prompt(t("copyNamePrompt"), t("copyName", plan.name));
           if (name === null) return;
           try {
             await api("POST", `/plans/${plan.id}/duplicate`, { name });
-            toast("Plan duplicated (shifts only, no sign-ups)");
+            toast(t("duplicated"));
             renderHome();
           } catch (err) {
             showError(err);
           }
         },
-      }, "Duplicate"),
+      }, t("duplicate")),
       h("button", {
         class: "btn btn-sm btn-danger px-2",
         onclick: async () => {
           const pw = await adminAuth(
             { id: plan.id, hasAdminPassword: !!plan.has_admin_password },
-            `Delete "${plan.name}" with all shifts, sign-ups and versions? This cannot be undone.`,
+            t("confirmDelete", plan.name),
           );
           if (pw === null) return;
           try {
             await api("DELETE", `/plans/${plan.id}`, { adminPassword: pw || undefined });
-            toast("Plan deleted");
+            toast(t("deleted"));
             renderHome();
           } catch (err) {
             showError(err);
           }
         },
-      }, "Delete"),
+      }, t("delete")),
     ),
   );
 }
@@ -405,8 +439,8 @@ async function refreshPlan() {
     if (err.status === 404) {
       state.data = null;
       app.replaceChildren(
-        h("h1", { class: "text-3xl font-bold" }, "Plan not found"),
-        h("a", { class: "mt-4 inline-block font-semibold text-orange-700", href: "#/" }, "← All plans"),
+        h("h1", { class: "text-3xl font-bold" }, t("planNotFound")),
+        h("a", { class: "mt-4 inline-block font-semibold text-orange-700", href: "#/" }, t("allPlans")),
       );
       return;
     }
@@ -418,12 +452,12 @@ async function refreshPlan() {
 
 function renderPlan() {
   if (!state.data) {
-    app.replaceChildren(h("p", { class: "text-stone-500" }, "Loading…"));
+    app.replaceChildren(h("p", { class: "text-stone-500" }, t("loading")));
     refreshPlan();
     return;
   }
   const { plan } = state.data;
-  document.title = `${plan.name} · Shift Planner`;
+  document.title = `${plan.name} · ${t("appName")}`;
 
   if (state.autoUnlock === plan.id) {
     state.autoUnlock = null;
@@ -432,32 +466,32 @@ function renderPlan() {
 
   const body = h("div");
   app.replaceChildren(
-    h("a", { class: "no-print inline-flex min-h-10 items-center text-base font-semibold text-stone-600 hover:text-stone-900", href: "#/" }, "← All plans"),
+    h("a", { class: "no-print inline-flex min-h-10 items-center text-base font-semibold text-stone-600 hover:text-stone-900", href: "#/" }, t("allPlans")),
     h("h1", { class: "mt-1 text-3xl font-bold tracking-tight sm:text-4xl" }, plan.name, plan.hasAdminPassword ? h("span", { class: "no-print" }, " 🔒") : ""),
     h("div", { class: "no-print mt-3 flex flex-wrap items-center gap-3 text-base text-stone-500" },
-      `Created ${fmtWhen(plan.createdAt)}`,
+      t("created", fmtWhen(plan.createdAt)),
       h("button", {
         class: "btn btn-sm",
         onclick: async () => {
           const link = `${location.origin}/#/plan/${plan.id}`;
           try {
             await navigator.clipboard.writeText(link);
-            toast("Sign-up link copied");
+            toast(t("linkCopied"));
           } catch {
-            prompt("Copy this link:", link);
+            prompt(t("copyThisLink"), link);
           }
         },
-      }, "Copy share link"),
+      }, t("copyLink")),
     ),
     h("nav", { class: "no-print mt-6 mb-8 flex gap-1 rounded-full max-[379px]:gap-0 max-[379px]:p-1 bg-stone-200/70 p-1.5" },
-      TABS.map(([key, label]) =>
+      TABS.map((key) =>
         h("button", {
           class: state.tab === key
-            ? "min-h-11 flex-auto cursor-pointer rounded-full bg-white px-2 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] font-semibold text-stone-900 shadow-sm sm:px-4 sm:text-lg"
-            : "min-h-11 flex-auto cursor-pointer rounded-full px-2 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] font-semibold text-stone-600 hover:text-stone-900 sm:px-4 sm:text-lg",
+            ? "min-h-11 flex-auto cursor-pointer rounded-full bg-white px-1.5 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] max-[339px]:text-[14px] font-semibold text-stone-900 shadow-sm sm:px-4 sm:text-lg"
+            : "min-h-11 flex-auto cursor-pointer rounded-full px-1.5 text-[16px] whitespace-nowrap max-[379px]:px-1 max-[379px]:text-[15px] max-[339px]:text-[14px] font-semibold text-stone-600 hover:text-stone-900 sm:px-4 sm:text-lg",
           "aria-current": state.tab === key ? "page" : null,
           onclick: () => (location.hash = `#/plan/${plan.id}/${key}`),
-        }, label),
+        }, t(`tab_${key}`)),
       ),
     ),
     body,
@@ -496,10 +530,10 @@ function progressSummary(shifts, byShift) {
   const filled = shifts.reduce((n, s) => n + Math.min(byShift.get(s.id).length, s.capacity), 0);
   return h("div", { class: "flex flex-col gap-2.5" },
     h("div", { class: "flex flex-wrap items-baseline gap-x-2 text-lg" },
-      h("span", { class: "font-bold" }, `${filled} of ${total} spots filled`),
+      h("span", { class: "font-bold" }, t("filled", filled, total)),
       total > filled
-        ? h("span", { class: "font-semibold text-rose-700" }, `· ${total - filled} still open`)
-        : h("span", { class: "font-semibold text-emerald-700" }, "· all covered 🎉"),
+        ? h("span", { class: "font-semibold text-rose-700" }, t("stillOpen", total - filled))
+        : h("span", { class: "font-semibold text-emerald-700" }, t("allCovered")),
     ),
     h("div", { class: "h-2.5 overflow-hidden rounded-full bg-stone-200", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": total, "aria-valuenow": filled },
       h("div", { class: "h-full rounded-full bg-emerald-500 transition-all", style: `width:${total ? (filled / total) * 100 : 0}%` }),
@@ -523,8 +557,8 @@ function pill(name, onRemove) {
     "data-name": name.toLowerCase(),
   },
     h("span", { class: "avatar", "aria-hidden": "true" }, initials(name)),
-    h("span", { class: "truncate" }, name, isMe ? h("span", { class: "me-tag font-semibold text-stone-500" }, " (you)") : null),
-    onRemove && h("button", { class: "pill-x", title: `Remove ${name}`, "aria-label": `Remove ${name}`, onclick: onRemove }, "×"),
+    h("span", { class: "truncate" }, name, isMe ? h("span", { class: "me-tag font-semibold text-stone-500" }, t("you")) : null),
+    onRemove && h("button", { class: "pill-x", title: t("removeName", name), "aria-label": t("removeName", name), onclick: onRemove }, "×"),
   );
 }
 
@@ -535,7 +569,7 @@ function markMe() {
     p.classList.toggle("pill-me", isMe);
     const label = p.querySelector(".truncate");
     const tag = label.querySelector(".me-tag");
-    if (isMe && !tag) label.append(h("span", { class: "me-tag font-semibold text-stone-500" }, " (you)"));
+    if (isMe && !tag) label.append(h("span", { class: "me-tag font-semibold text-stone-500" }, t("you")));
     if (!isMe && tag) tag.remove();
   });
 }
@@ -544,7 +578,7 @@ function markMe() {
 
 function renderSignupList() {
   const { shifts } = state.data;
-  if (!shifts.length) return emptyCard("No shifts yet. The organizer can add them in the Builder tab.");
+  if (!shifts.length) return emptyCard(t("noShifts"));
 
   const byShift = signupsByShift();
   const isFull = (s) => byShift.get(s.id).length >= s.capacity;
@@ -578,7 +612,7 @@ function renderSignupList() {
         h("div", { class: "grid gap-x-6 gap-y-3 border-t border-dashed border-stone-300 py-6 first:border-t-0 sm:grid-cols-[6.5rem_1fr]" },
           h("div", { class: "text-2xl font-bold tracking-tight tabular-nums sm:pt-4" },
             time,
-            sharedEnd && h("span", { class: "ml-2 text-lg font-semibold text-stone-500 sm:ml-0 sm:block" }, `to ${sharedEnd}`),
+            sharedEnd && h("span", { class: "ml-2 text-lg font-semibold text-stone-500 sm:ml-0 sm:block" }, t("slotTo", sharedEnd)),
           ),
           h("ul", { class: "flex flex-col gap-3" }, visible.map((s) => shiftItem(s, byShift.get(s.id), !sharedEnd))),
         ),
@@ -590,8 +624,8 @@ function renderSignupList() {
       h("button", { class: "btn btn-sm", onclick: () => document.getElementById(id)?.scrollIntoView() },
         fmtDayShort(date),
         open
-          ? h("span", { class: "badge bg-rose-100 text-rose-800" }, `${open} open`)
-          : h("span", { class: "badge bg-emerald-100 text-emerald-800" }, "✓ full"),
+          ? h("span", { class: "badge bg-rose-100 text-rose-800" }, t("nOpen", open))
+          : h("span", { class: "badge bg-emerald-100 text-emerald-800" }, t("dayFull")),
       ),
     );
     sections.push(
@@ -599,7 +633,7 @@ function renderSignupList() {
         h("h2", { class: "flex flex-wrap items-baseline justify-between gap-3 border-b-2 border-stone-200 pb-3 text-2xl font-bold tracking-tight" },
           fmtDayLong(date),
           h("span", { class: open ? "text-base font-semibold text-rose-700" : "text-base font-semibold text-emerald-700" },
-            open ? `${open} spots open` : "All filled ✓"),
+            open ? t("daySpotsOpen", open) : t("dayAllFilled")),
         ),
         slotEls,
       ),
@@ -610,7 +644,7 @@ function renderSignupList() {
     id: "me",
     class: "input min-h-14 text-xl",
     value: state.me,
-    placeholder: "e.g. Maria Schmidt",
+    placeholder: t("namePh"),
     maxlength: 100,
     autocomplete: "name",
     oninput: (e) => {
@@ -622,17 +656,17 @@ function renderSignupList() {
 
   return h("div", null,
     h("section", { class: "card flex flex-col gap-3" },
-      h("label", { for: "me", class: "text-lg font-bold" }, "Your name"),
+      h("label", { for: "me", class: "text-lg font-bold" }, t("yourName")),
       meInput,
-      h("p", { class: "text-base text-stone-600" }, "Type your name once, then tap “Sign up” next to any shift. Tap × on a name to remove it."),
+      h("p", { class: "text-base text-stone-600" }, t("nameHint")),
       h("label", { class: "flex min-h-11 cursor-pointer items-center gap-3 font-medium" },
         h("input", { type: "checkbox", class: "size-6 flex-none", checked: state.onlyOpen, onchange: (e) => ((state.onlyOpen = e.target.checked), renderPlan()) }),
-        "Only show shifts with open spots",
+        t("onlyOpen"),
       ),
     ),
     h("div", { class: "mt-8" }, progressSummary(shifts, byShift)),
-    jump.length > 1 && h("nav", { class: "mt-5 flex flex-wrap gap-2", "aria-label": "Jump to day" }, jump),
-    sections.length ? sections : h("div", { class: "mt-8" }, emptyCard("🎉 Every shift is filled.")),
+    jump.length > 1 && h("nav", { class: "mt-5 flex flex-wrap gap-2", "aria-label": t("jumpToDay") }, jump),
+    sections.length ? sections : h("div", { class: "mt-8" }, emptyCard(t("everyFilled"))),
   );
 }
 
@@ -640,10 +674,10 @@ function shiftItem(shift, people, showEnd) {
   const left = shift.capacity - people.length;
   const full = left <= 0;
   const status = full
-    ? h("span", { class: "badge bg-emerald-100 text-emerald-800" }, "✓ Full")
+    ? h("span", { class: "badge bg-emerald-100 text-emerald-800" }, t("full"))
     : people.length
-      ? h("span", { class: "badge bg-amber-100 text-amber-900" }, `${left} of ${shift.capacity} spots left`)
-      : h("span", { class: "badge bg-rose-100 text-rose-800" }, `${shift.capacity} ${shift.capacity === 1 ? "spot" : "spots"} open`);
+      ? h("span", { class: "badge bg-amber-100 text-amber-900" }, t("spotsLeft", left, shift.capacity))
+      : h("span", { class: "badge bg-rose-100 text-rose-800" }, t("spotsOpen", shift.capacity));
   return h("li", {
     class: full
       ? "relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-3xl bg-emerald-50 py-5 pr-5 pl-7 ring-1 ring-emerald-200"
@@ -654,14 +688,14 @@ function shiftItem(shift, people, showEnd) {
     h("div", { class: "flex min-w-0 flex-1 basis-72 flex-col gap-3" },
       h("div", { class: "flex flex-wrap items-center gap-2" },
         roleChip(shift.role),
-        showEnd && shift.endTime && h("span", { class: "font-semibold text-stone-500" }, `until ${shift.endTime}`),
+        showEnd && shift.endTime && h("span", { class: "font-semibold text-stone-500" }, t("shiftUntil", shift.endTime)),
         status,
       ),
       people.length
         ? h("div", { class: "flex flex-wrap gap-2" }, people.map((u) => pill(u.name, () => removeSignup(shift, u))))
-        : h("span", { class: "text-base text-stone-500 italic" }, "No one yet"),
+        : h("span", { class: "text-base text-stone-500 italic" }, t("noOneYet")),
     ),
-    !full && h("button", { class: "btn btn-primary min-w-36 text-lg max-sm:w-full", onclick: () => signUpMe(shift, people) }, "Sign up"),
+    !full && h("button", { class: "btn btn-primary min-w-36 text-lg max-sm:w-full", onclick: () => signUpMe(shift, people) }, t("signUp")),
   );
 }
 
@@ -674,11 +708,11 @@ function signUpMe(shift, people) {
     input.classList.remove("nudge");
     void input.offsetWidth; // restart the nudge animation
     input.classList.add("nudge");
-    toast("Please type your name first");
+    toast(t("typeNameFirst"));
     return;
   }
   if (people.some((u) => u.name.toLowerCase() === name.toLowerCase())) {
-    toast(`${name} is already signed up here`);
+    toast(t("alreadySignedUp", name));
     return;
   }
   addSignup(shift, name);
@@ -688,13 +722,13 @@ async function addSignup(shift, name) {
   try {
     const { id } = await api("POST", `/plans/${state.planId}/shifts/${shift.id}/signup`, { name });
     await refreshPlan();
-    toast(`✓ ${name} signed up: ${shift.role}, ${fmtDayShort(shift.date)} ${shift.startTime}`, {
-      label: "Undo",
+    toast(t("signedUp", name, shift.role, fmtDayShort(shift.date), shift.startTime), {
+      label: t("undo"),
       run: async () => {
         try {
           await api("DELETE", `/plans/${state.planId}/signups/${id}`);
           await refreshPlan();
-          toast("Sign-up undone");
+          toast(t("signupUndone"));
         } catch (err) {
           showError(err);
         }
@@ -710,8 +744,8 @@ async function removeSignup(shift, signup) {
   try {
     await api("DELETE", `/plans/${state.planId}/signups/${signup.id}`);
     await refreshPlan();
-    toast(`Removed ${signup.name} from ${shift.role}`, {
-      label: "Undo",
+    toast(t("removed", signup.name, shift.role), {
+      label: t("undo"),
       run: () => addSignup(shift, signup.name),
     });
   } catch (err) {
@@ -724,7 +758,7 @@ async function removeSignup(shift, signup) {
 
 function renderMatrix() {
   const { shifts } = state.data;
-  if (!shifts.length) return emptyCard("No shifts yet. The organizer can add them in the Builder tab.");
+  if (!shifts.length) return emptyCard(t("noShifts"));
 
   const byShift = signupsByShift();
   const { roles, slots, byKey } = gridModel(shifts);
@@ -757,10 +791,10 @@ function renderMatrix() {
           // stopping early if the same role has another shift starting there.
           let span = 1;
           if (shift.endTime) {
-            for (const t of timesByDate.get(slot.date)) {
-              if (t <= slot.time) continue;
-              const next = `${role}|${slot.date}|${t}`;
-              if ((shift.endTime > shift.startTime && t >= shift.endTime) || byKey.has(next)) break;
+            for (const time of timesByDate.get(slot.date)) {
+              if (time <= slot.time) continue;
+              const next = `${role}|${slot.date}|${time}`;
+              if ((shift.endTime > shift.startTime && time >= shift.endTime) || byKey.has(next)) break;
               covered.add(next);
               span++;
             }
@@ -774,10 +808,10 @@ function renderMatrix() {
   return h("div", { class: "flex flex-col gap-6" },
     h("div", { class: "flex flex-wrap items-end justify-between gap-4" },
       h("div", { class: "min-w-64 flex-1" }, progressSummary(shifts, byShift)),
-      h("button", { class: "no-print btn", onclick: () => window.print() }, "🖨️ Print"),
+      h("button", { class: "no-print btn", onclick: () => window.print() }, t("print")),
     ),
     h("div", { class: "flex flex-wrap gap-x-5 gap-y-2 text-base text-stone-600" },
-      [["bg-emerald-100 ring-emerald-300", "Full"], ["bg-orange-100 ring-orange-300", "Partly filled"], ["bg-red-200 ring-red-300", "Nobody yet"]].map(([cls, label]) =>
+      [["bg-emerald-100 ring-emerald-300", t("legendFull")], ["bg-orange-100 ring-orange-300", t("legendPartly")], ["bg-red-200 ring-red-300", t("legendNobody")]].map(([cls, label]) =>
         h("span", { class: "inline-flex items-center gap-2" }, h("span", { class: `size-4 rounded ring-1 ${cls}` }), label),
       ),
     ),
@@ -785,7 +819,7 @@ function renderMatrix() {
       h("table", { class: "w-full border-collapse text-left" },
         h("thead", null,
           h("tr", null,
-            h("th", { class: "sticky left-0 z-[1] border-b border-stone-200 bg-white px-3 py-3 text-base font-semibold text-stone-500 sm:px-4" }, "Time"),
+            h("th", { class: "sticky left-0 z-[1] border-b border-stone-200 bg-white px-3 py-3 text-base font-semibold text-stone-500 sm:px-4" }, t("time")),
             roles.map((r) =>
               h("th", { class: "border-b border-l border-stone-200 border-t-4 border-t-(--role) px-3 py-3", style: roleStyle(r) }, roleChip(r)),
             ),
@@ -805,13 +839,13 @@ function overviewCell(shift, people, span) {
   if (!people.length) {
     return h("td", { class: `${base} bg-red-200`, rowspan, style: roleStyle(shift.role) },
       range,
-      h("span", { class: "font-bold text-red-900" }, `(${open} open)`),
+      h("span", { class: "font-bold text-red-900" }, t("nOpenParen", open)),
     );
   }
   return h("td", { class: open <= 0 ? `${base} bg-emerald-50` : `${base} bg-orange-100`, rowspan, style: roleStyle(shift.role) },
     range,
     h("div", { class: "pills flex flex-wrap gap-1.5" }, people.map((u) => pill(u.name))),
-    open > 0 && h("div", { class: "mt-1.5 text-sm font-bold text-orange-800" }, `(${open} open)`),
+    open > 0 && h("div", { class: "mt-1.5 text-sm font-bold text-orange-800" }, t("nOpenParen", open)),
   );
 }
 
@@ -820,8 +854,8 @@ function overviewCell(shift, people, span) {
 async function unlockBuilder() {
   const { plan, shifts } = state.data;
   if (plan.hasAdminPassword) {
-    if (!state.passwords.has(plan.id) && (await adminAuth(plan, "Enter the admin password to edit the layout.")) === null) return;
-  } else if (shifts.length && !confirm("Edit the shift layout? Changes affect everyone signing up.")) {
+    if (!state.passwords.has(plan.id) && (await adminAuth(plan, t("pwEdit"))) === null) return;
+  } else if (shifts.length && !confirm(t("confirmEdit"))) {
     return;
   }
   openBuilder();
@@ -841,9 +875,9 @@ function renderBuilder() {
   if (!state.unlocked) {
     return h("div", { class: "card flex flex-col items-center gap-3 py-14 text-center" },
       h("div", { class: "grid size-16 place-items-center rounded-full bg-stone-100 text-3xl" }, "🔒"),
-      h("h2", { class: "text-2xl font-bold tracking-tight" }, "Layout is locked"),
-      h("p", { class: "max-w-md text-stone-600" }, "The shift structure is locked so it can't be changed by accident."),
-      h("button", { class: "btn btn-primary mt-2", onclick: unlockBuilder }, "Edit layout"),
+      h("h2", { class: "text-2xl font-bold tracking-tight" }, t("locked")),
+      h("p", { class: "max-w-md text-stone-600" }, t("lockedHint")),
+      h("button", { class: "btn btn-primary mt-2", onclick: unlockBuilder }, t("editLayout")),
     );
   }
   const list = h("div", { class: "flex flex-col gap-3 sm:gap-0" });
@@ -851,15 +885,15 @@ function renderBuilder() {
   const redraw = () => {
     const colors = computeRoleColors(state.rows.map((r) => (r.role || "").trim()).filter(Boolean));
     list.replaceChildren(...state.rows.map((row, i) => builderRow(row, i, redraw, colors)));
-    counter.textContent = `${state.rows.length} rows`;
+    counter.textContent = t("rows", state.rows.length);
   };
   redraw();
 
   return h("div", { class: "flex flex-col gap-5" },
     // stays reachable while scrolling through long layouts
     h("div", { class: "sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 bg-stone-50/90 px-4 py-3 backdrop-blur-lg sm:-mx-6 sm:px-6" },
-      h("button", { class: "btn btn-primary", onclick: saveLayout }, "Save layout"),
-      h("button", { class: "btn", onclick: cancelBuilder }, "Cancel"),
+      h("button", { class: "btn btn-primary", onclick: saveLayout }, t("saveLayout")),
+      h("button", { class: "btn", onclick: cancelBuilder }, t("cancel")),
       h("span", { class: "flex-1" }),
       counter,
     ),
@@ -867,7 +901,7 @@ function renderBuilder() {
     // phone: one card per row; desktop: one line per row inside a single card
     h("div", { class: "sm:overflow-hidden sm:rounded-3xl sm:bg-white sm:shadow-sm sm:ring-1 sm:ring-stone-200/80" },
       h("div", { class: `hidden gap-2 px-4 pt-4 pb-2 text-sm font-semibold tracking-wide text-stone-500 uppercase sm:grid ${BUILDER_COLS}` },
-        ["Role", "Date", "Start", "End", "Spots", "", ""].map((t) => h("span", null, t)),
+        [t("colRole"), t("colDate"), t("colStart"), t("colEnd"), t("colSpots"), "", ""].map((label) => h("span", null, label)),
       ),
       list,
     ),
@@ -879,7 +913,7 @@ function renderBuilder() {
           state.rows.push(last ? { ...last, id: undefined } : { role: "", date: "", startTime: "", endTime: "", capacity: 1 });
           redraw();
         },
-      }, "+ Add row"),
+      }, t("addRow")),
     ),
   );
 }
@@ -910,25 +944,25 @@ function builderRow(row, i, redraw, colors) {
       h("span", { class: role ? "size-3.5 flex-none rounded-full bg-(--role)" : "size-3.5 flex-none rounded-full bg-stone-200", "aria-hidden": "true" }),
       h("input", {
         class: "input min-h-11 px-3 text-base font-semibold",
-        placeholder: "Role",
-        "aria-label": "Role",
+        placeholder: t("colRole"),
+        "aria-label": t("colRole"),
         maxlength: 100,
         value: row.role ?? "",
         oninput: (e) => (row.role = e.target.value),
         onchange: redraw, // recolor once the name is final
       }),
     ),
-    field("Date", "col-span-2", bind("date", { type: "date", label: "Date" })),
-    field("Start", "col-span-1", bind("startTime", { type: "time", label: "Start" })),
-    field("End", "col-span-1", bind("endTime", { type: "time", label: "End (optional)" })),
-    field("Spots", "col-span-1", bind("capacity", { type: "number", min: 1, max: 1000, label: "Spots" })),
-    h("div", { class: "self-center text-sm font-semibold text-stone-500 max-sm:pt-5" }, signupCount ? `${signupCount} signed up` : ""),
+    field(t("colDate"), "col-span-2", bind("date", { type: "date", label: t("colDate") })),
+    field(t("colStart"), "col-span-1", bind("startTime", { type: "time", label: t("colStart") })),
+    field(t("colEnd"), "col-span-1", bind("endTime", { type: "time", label: t("colEndOptional") })),
+    field(t("colSpots"), "col-span-1", bind("capacity", { type: "number", min: 1, max: 1000, label: t("colSpots") })),
+    h("div", { class: "self-center text-sm font-semibold text-stone-500 max-sm:pt-5" }, signupCount ? t("signedUpCount", signupCount) : ""),
     h("div", { class: "col-span-2 sm:col-span-1" },
       h("div", { class: "flex justify-end gap-1.5" },
         h("button", {
           class: "btn btn-sm px-3",
-          title: "Duplicate row",
-          "aria-label": "Duplicate row",
+          title: t("dupRow"),
+          "aria-label": t("dupRow"),
           onclick: () => {
             state.rows.splice(i + 1, 0, { ...row, id: undefined, dupe: false });
             redraw();
@@ -936,8 +970,8 @@ function builderRow(row, i, redraw, colors) {
         }, "⧉"),
         h("button", {
           class: "btn btn-sm btn-danger px-3",
-          title: "Delete row",
-          "aria-label": "Delete row",
+          title: t("delRow"),
+          "aria-label": t("delRow"),
           onclick: () => {
             state.rows.splice(i, 1);
             redraw();
@@ -951,7 +985,7 @@ function builderRow(row, i, redraw, colors) {
 function quickGenerate(redraw) {
   const today = new Date().toISOString().slice(0, 10);
   const f = {
-    role: h("input", { class: "input", placeholder: "e.g. Bar" }),
+    role: h("input", { class: "input", placeholder: t("rolePh") }),
     from: h("input", { class: "input", type: "date", value: today }),
     to: h("input", { class: "input", type: "date", value: today }),
     start: h("input", { class: "input", type: "time", value: "14:00" }),
@@ -966,46 +1000,46 @@ function quickGenerate(redraw) {
     const role = f.role.value.trim();
     const step = Math.round(Number(f.hours.value) * 60);
     const cap = Number(f.cap.value);
-    const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const toMin = (hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
     const startMin = toMin(f.start.value || "00:00");
     const endMin = toMin(f.end.value || "00:00");
-    if (!role || !f.from.value || !f.to.value) return alert("Role and dates are required.");
-    if (f.to.value < f.from.value) return alert("'Date to' must be on or after 'Date from'.");
-    if (endMin <= startMin) return alert("End time must be after start time (same day).");
-    if (!(step > 0) || !Number.isInteger(cap) || cap < 1) return alert("Slot length and spots must be positive.");
+    if (!role || !f.from.value || !f.to.value) return alert(t("qgErrRequired"));
+    if (f.to.value < f.from.value) return alert(t("qgErrDates"));
+    if (endMin <= startMin) return alert(t("qgErrTimes"));
+    if (!(step > 0) || !Number.isInteger(cap) || cap < 1) return alert(t("qgErrPositive"));
 
     const dates = [];
     for (let d = new Date(`${f.from.value}T00:00:00Z`); d <= new Date(`${f.to.value}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
       dates.push(d.toISOString().slice(0, 10));
     }
-    const hhmm = (t) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+    const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
     const times = [];
-    for (let t = startMin; t + step <= endMin; t += step) times.push([hhmm(t), hhmm(t + step)]);
-    if (!times.length) return alert("The slot length is longer than the time window.");
+    for (let min = startMin; min + step <= endMin; min += step) times.push([hhmm(min), hhmm(min + step)]);
+    if (!times.length) return alert(t("qgErrTooLong"));
     const count = dates.length * times.length;
-    if (count > 300 && !confirm(`This generates ${count} rows. Continue?`)) return;
+    if (count > 300 && !confirm(t("qgConfirmMany", count))) return;
     for (const date of dates) {
       for (const [startTime, endTime] of times) state.rows.push({ role, date, startTime, endTime, capacity: cap });
     }
     redraw();
-    toast(`Added ${count} rows (${dates.length} days × ${times.length} slots)`);
+    toast(t("qgAdded", count, dates.length, times.length));
   };
 
   return h("details", { class: "card group", open: state.rows.length === 0 },
     h("summary", { class: "flex cursor-pointer list-none items-center justify-between gap-3 text-lg font-bold" },
-      h("span", null, "⚡ Quick generate"),
-      h("span", { class: "text-base font-semibold text-stone-500 group-open:hidden" }, "Show"),
+      h("span", null, t("qg")),
+      h("span", { class: "text-base font-semibold text-stone-500 group-open:hidden" }, t("show")),
     ),
-    h("p", { class: "mt-2 text-base text-stone-600" }, "Creates one row per day and time slot, e.g. Bar from 14:00 to 22:00 in 2-hour slots gives 14–16, 16–18, 18–20, 20–22."),
+    h("p", { class: "mt-2 text-base text-stone-600" }, t("qgHint")),
     h("form", { class: "mt-5 grid grid-cols-2 items-end gap-4 sm:grid-cols-4", onsubmit: generate },
-      h("div", { class: "col-span-2" }, field("Role", f.role)),
-      h("div", { class: "col-span-2 sm:col-span-1" }, field("Date from", f.from)),
-      h("div", { class: "col-span-2 sm:col-span-1" }, field("Date to", f.to)),
-      field("Start time", f.start),
-      field("End time", f.end),
-      field("Slot length (hours)", f.hours),
-      field("Spots per slot", f.cap),
-      h("button", { class: "btn btn-primary col-span-2 sm:col-span-4 sm:justify-self-start" }, "Generate rows"),
+      h("div", { class: "col-span-2" }, field(t("colRole"), f.role)),
+      h("div", { class: "col-span-2 sm:col-span-1" }, field(t("dateFrom"), f.from)),
+      h("div", { class: "col-span-2 sm:col-span-1" }, field(t("dateTo"), f.to)),
+      field(t("startTime"), f.start),
+      field(t("endTime"), f.end),
+      field(t("slotLength"), f.hours),
+      field(t("spotsPerSlot"), f.cap),
+      h("button", { class: "btn btn-primary col-span-2 sm:col-span-4 sm:justify-self-start" }, t("generate")),
     ),
   );
 }
@@ -1025,13 +1059,13 @@ async function saveLayout() {
   });
   if (dupes) {
     renderPlan();
-    return alert("Some rows have the same role, date and start time (highlighted). Merge them by raising the spots instead.");
+    return alert(t("errDupes"));
   }
-  if (rows.some((r) => !r.role || !r.date || !r.startTime)) return alert("Every row needs a role, date and start time.");
+  if (rows.some((r) => !r.role || !r.date || !r.startTime)) return alert(t("errRowFields"));
 
   const keptIds = new Set(rows.map((r) => r.id).filter(Boolean));
   const lost = state.data.signups.filter((u) => !keptIds.has(u.shiftId));
-  if (lost.length && !confirm(`Deleted rows have ${lost.length} sign-up(s) that will be removed too. Save anyway?`)) return;
+  if (lost.length && !confirm(t("confirmLost", lost.length))) return;
 
   try {
     await api("PUT", `/plans/${state.planId}/shifts`, {
@@ -1041,7 +1075,7 @@ async function saveLayout() {
     state.unlocked = false;
     state.rows = null;
     state.versions = null;
-    toast("Layout saved");
+    toast(t("layoutSaved"));
     await refreshPlan();
     location.hash = `#/plan/${state.planId}/signup`;
   } catch (err) {
@@ -1052,7 +1086,7 @@ async function saveLayout() {
 function cancelBuilder() {
   const original = JSON.stringify(state.data.shifts.map(layoutFields));
   const current = JSON.stringify(state.rows.map(layoutFields));
-  if (original !== current && !confirm("Discard your unsaved layout changes?")) return;
+  if (original !== current && !confirm(t("confirmDiscard"))) return;
   state.unlocked = false;
   state.rows = null;
   renderPlan();
@@ -1061,7 +1095,7 @@ function cancelBuilder() {
 // ---------- versions ----------
 
 async function renderVersions(container) {
-  container.replaceChildren(h("p", { class: "text-stone-500" }, "Loading…"));
+  container.replaceChildren(h("p", { class: "text-stone-500" }, t("loading")));
   try {
     const { versions } = await api("GET", `/plans/${state.planId}/versions`);
     state.versions = versions;
@@ -1071,17 +1105,17 @@ async function renderVersions(container) {
   }
   const latest = state.versions[0]?.version_number;
   container.replaceChildren(
-    h("p", { class: "mb-5 text-stone-600" }, "Every change is saved as a version (last 100 kept). Restoring creates a new version, so it can be undone too."),
+    h("p", { class: "mb-5 text-stone-600" }, t("versionsHint")),
     h("ol", { class: "divide-y divide-stone-100 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200/80" },
       state.versions.map((v) =>
         h("li", { class: "flex items-center gap-4 px-4 py-3.5 sm:px-5" },
           h("div", { class: "min-w-0 flex-1" },
             h("div", { class: "text-sm font-semibold text-stone-500 tabular-nums" }, `#${v.version_number} · ${fmtWhen(v.created_at)}`),
-            h("div", { class: "break-words" }, v.description),
+            h("div", { class: "break-words" }, translateVersion(v.description)),
           ),
           v.version_number === latest
-            ? h("span", { class: "badge flex-none bg-stone-100 text-stone-600" }, "current")
-            : h("button", { class: "btn btn-sm flex-none", onclick: () => restoreVersion(v.version_number) }, "Restore"),
+            ? h("span", { class: "badge flex-none bg-stone-100 text-stone-600" }, t("current"))
+            : h("button", { class: "btn btn-sm flex-none", onclick: () => restoreVersion(v.version_number) }, t("restore")),
         ),
       ),
     ),
@@ -1089,13 +1123,13 @@ async function renderVersions(container) {
 }
 
 async function restoreVersion(n) {
-  const pw = await adminAuth(state.data.plan, `Restore version #${n}? Current shifts and sign-ups will be replaced (this itself is versioned).`);
+  const pw = await adminAuth(state.data.plan, t("confirmRestore", n));
   if (pw === null) return;
   try {
     await api("POST", `/plans/${state.planId}/versions/${n}/restore`, { adminPassword: pw || undefined });
     state.unlocked = false;
     state.rows = null;
-    toast(`Restored version #${n}`);
+    toast(t("restored", n));
     await refreshPlan();
   } catch (err) {
     showError(err);

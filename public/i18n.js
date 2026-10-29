@@ -1,0 +1,356 @@
+"use strict";
+
+// UI strings. Values are plain strings or functions taking parameters.
+// German uses "du" (informal), as for a neighbourhood / volunteer event.
+const STRINGS = {
+  en: {
+    appName: "Shift Planner",
+    loading: "Loading…",
+    requestFailed: (status) => `Request failed (${status})`,
+    updateAvailable: "A new version of this page is available.",
+    reload: "Reload",
+    ok: "OK",
+    cancel: "Cancel",
+    undo: "Undo",
+    ghTitle: "Source on GitHub",
+    language: "Language",
+    justNow: "just now",
+
+    tab_signup: "Sign up",
+    tab_overview: "Overview",
+    tab_builder: "Builder",
+    tab_versions: "Versions",
+
+    home_title: "Shift plans",
+    home_intro: "Create a plan, build the shift layout, then share the link so people can sign up.",
+    planName: "Plan name",
+    planNamePh: "e.g. Summer Festival 2026",
+    adminPassword: "Admin password",
+    optional: "Optional",
+    createPlan: "Create plan",
+    existingPlans: "Existing plans",
+    noPlans: "No plans yet.",
+    updatedPrefix: "Updated ",
+    created: (when) => `Created ${when}`,
+    open: "Open",
+    duplicate: "Duplicate",
+    delete: "Delete",
+    copyNamePrompt: "Name for the copy:",
+    copyName: (name) => `${name} (copy)`,
+    duplicated: "Plan duplicated (shifts only, no sign-ups)",
+    confirmDelete: (name) => `Delete "${name}" with all shifts, sign-ups and versions? This cannot be undone.`,
+    deleted: "Plan deleted",
+
+    planNotFound: "Plan not found",
+    allPlans: "← All plans",
+    copyLink: "Copy share link",
+    linkCopied: "Sign-up link copied",
+    copyThisLink: "Copy this link:",
+
+    filled: (filled, total) => `${filled} of ${total} spots filled`,
+    stillOpen: (n) => `· ${n} still open`,
+    allCovered: "· all covered 🎉",
+    you: " (you)",
+    removeName: (name) => `Remove ${name}`,
+    noShifts: "No shifts yet. The organizer can add them in the Builder tab.",
+
+    yourName: "Your name",
+    namePh: "e.g. Maria Schmidt",
+    nameHint: "Type your name once, then tap “Sign up” next to any shift. Tap × on a name to remove it.",
+    onlyOpen: "Only show shifts with open spots",
+    jumpToDay: "Jump to day",
+    nOpen: (n) => `${n} open`,
+    dayFull: "✓ full",
+    daySpotsOpen: (n) => (n === 1 ? "1 spot open" : `${n} spots open`),
+    dayAllFilled: "All filled ✓",
+    everyFilled: "🎉 Every shift is filled.",
+    slotTo: (time) => `to ${time}`,
+    shiftUntil: (time) => `until ${time}`,
+    full: "✓ Full",
+    spotsLeft: (left, cap) => `${left} of ${cap} spots left`,
+    spotsOpen: (n) => (n === 1 ? "1 spot open" : `${n} spots open`),
+    noOneYet: "No one yet",
+    signUp: "Sign up",
+    typeNameFirst: "Please type your name first",
+    alreadySignedUp: (name) => `${name} is already signed up here`,
+    signedUp: (name, role, day, time) => `✓ ${name} signed up: ${role}, ${day} ${time}`,
+    signupUndone: "Sign-up undone",
+    removed: (name, role) => `Removed ${name} from ${role}`,
+
+    print: "🖨️ Print",
+    legendFull: "Full",
+    legendPartly: "Partly filled",
+    legendNobody: "Nobody yet",
+    time: "Time",
+    nOpenParen: (n) => `(${n} open)`,
+
+    pwEdit: "Enter the admin password to edit the layout.",
+    confirmEdit: "Edit the shift layout? Changes affect everyone signing up.",
+    locked: "Layout is locked",
+    lockedHint: "The shift structure is locked so it can't be changed by accident.",
+    editLayout: "Edit layout",
+    rows: (n) => `${n} rows`,
+    saveLayout: "Save layout",
+    colRole: "Role",
+    colDate: "Date",
+    colStart: "Start",
+    colEnd: "End",
+    colEndOptional: "End (optional)",
+    colSpots: "Spots",
+    addRow: "+ Add row",
+    signedUpCount: (n) => `${n} signed up`,
+    dupRow: "Duplicate row",
+    delRow: "Delete row",
+    rolePh: "e.g. Bar",
+
+    qg: "⚡ Quick generate",
+    show: "Show",
+    qgHint: "Creates one row per day and time slot, e.g. Bar from 14:00 to 22:00 in 2-hour slots gives 14–16, 16–18, 18–20, 20–22.",
+    dateFrom: "Date from",
+    dateTo: "Date to",
+    startTime: "Start time",
+    endTime: "End time",
+    slotLength: "Slot length (hours)",
+    spotsPerSlot: "Spots per slot",
+    generate: "Generate rows",
+    qgErrRequired: "Role and dates are required.",
+    qgErrDates: "'Date to' must be on or after 'Date from'.",
+    qgErrTimes: "End time must be after start time (same day).",
+    qgErrPositive: "Slot length and spots must be positive.",
+    qgErrTooLong: "The slot length is longer than the time window.",
+    qgConfirmMany: (n) => `This generates ${n} rows. Continue?`,
+    qgAdded: (count, days, slots) => `Added ${count} rows (${days} days × ${slots} slots)`,
+    errDupes: "Some rows have the same role, date and start time (highlighted). Merge them by raising the spots instead.",
+    errRowFields: "Every row needs a role, date and start time.",
+    confirmLost: (n) => `Deleted rows have ${n} sign-up(s) that will be removed too. Save anyway?`,
+    layoutSaved: "Layout saved",
+    confirmDiscard: "Discard your unsaved layout changes?",
+
+    versionsHint: "Every change is saved as a version (last 100 kept). Restoring creates a new version, so it can be undone too.",
+    current: "current",
+    restore: "Restore",
+    confirmRestore: (n) => `Restore version #${n}? Current shifts and sign-ups will be replaced (this itself is versioned).`,
+    restored: (n) => `Restored version #${n}`,
+
+    // error codes sent by the API
+    field_planName: "Plan name",
+    field_role: "Role",
+    field_name: "Name",
+    err_notFound: "Not found",
+    err_planNotFound: "Plan not found",
+    err_shiftNotFound: "Shift not found",
+    err_signupNotFound: "Sign-up not found",
+    err_versionNotFound: "Version not found",
+    err_full: "This shift is already full",
+    err_wrongPassword: "Wrong admin password",
+    err_required: ({ field }) => `${t(`field_${field}`)} is required`,
+    err_tooLong: ({ field, max }) => `${t(`field_${field}`)} is too long (max ${max})`,
+    err_rowDate: ({ row }) => `Row ${row}: invalid date`,
+    err_rowStart: ({ row }) => `Row ${row}: invalid start time`,
+    err_rowEnd: ({ row }) => `Row ${row}: invalid end time`,
+    err_rowCapacity: ({ row }) => `Row ${row}: spots must be a whole number from 1 to 1000`,
+    err_badRequest: "Invalid request",
+    err_internal: "Internal error",
+  },
+
+  de: {
+    appName: "Schichtplaner",
+    loading: "Lädt…",
+    requestFailed: (status) => `Anfrage fehlgeschlagen (${status})`,
+    updateAvailable: "Es gibt eine neue Version dieser Seite.",
+    reload: "Neu laden",
+    ok: "OK",
+    cancel: "Abbrechen",
+    undo: "Rückgängig",
+    ghTitle: "Quellcode auf GitHub",
+    language: "Sprache",
+    justNow: "gerade eben",
+
+    tab_signup: "Eintragen",
+    tab_overview: "Übersicht",
+    tab_builder: "Planung",
+    tab_versions: "Verlauf",
+
+    home_title: "Schichtpläne",
+    home_intro: "Leg einen Plan an, bau die Schichten auf und teil dann den Link, damit sich alle eintragen können.",
+    planName: "Name des Plans",
+    planNamePh: "z. B. Sommerfest 2026",
+    adminPassword: "Admin-Passwort",
+    optional: "Optional",
+    createPlan: "Plan anlegen",
+    existingPlans: "Bestehende Pläne",
+    noPlans: "Noch keine Pläne.",
+    updatedPrefix: "Zuletzt geändert ",
+    created: (when) => `Erstellt am ${when}`,
+    open: "Öffnen",
+    duplicate: "Kopieren",
+    delete: "Löschen",
+    copyNamePrompt: "Name für die Kopie:",
+    copyName: (name) => `${name} (Kopie)`,
+    duplicated: "Plan kopiert (nur die Schichten, ohne Einträge)",
+    confirmDelete: (name) => `„${name}“ mit allen Schichten, Einträgen und Versionen löschen? Das lässt sich nicht rückgängig machen.`,
+    deleted: "Plan gelöscht",
+
+    planNotFound: "Plan nicht gefunden",
+    allPlans: "← Alle Pläne",
+    copyLink: "Link kopieren",
+    linkCopied: "Link zum Eintragen kopiert",
+    copyThisLink: "Diesen Link kopieren:",
+
+    filled: (filled, total) => `${filled} von ${total} Plätzen besetzt`,
+    stillOpen: (n) => `· ${n} noch frei`,
+    allCovered: "· alles besetzt 🎉",
+    you: " (du)",
+    removeName: (name) => `${name} austragen`,
+    noShifts: "Noch keine Schichten. Die Orga kann sie unter „Planung“ anlegen.",
+
+    yourName: "Dein Name",
+    namePh: "z. B. Maria Schmidt",
+    nameHint: "Gib einmal deinen Namen ein und tippe dann bei einer Schicht auf „Eintragen“. Mit × neben einem Namen trägst du ihn wieder aus.",
+    onlyOpen: "Nur Schichten mit freien Plätzen zeigen",
+    jumpToDay: "Zum Tag springen",
+    nOpen: (n) => `${n} frei`,
+    dayFull: "✓ voll",
+    daySpotsOpen: (n) => (n === 1 ? "1 Platz frei" : `${n} Plätze frei`),
+    dayAllFilled: "Alles besetzt ✓",
+    everyFilled: "🎉 Alle Schichten sind besetzt.",
+    slotTo: (time) => `bis ${time}`,
+    shiftUntil: (time) => `bis ${time}`,
+    full: "✓ Voll",
+    spotsLeft: (left, cap) => `${left} von ${cap} Plätzen frei`,
+    spotsOpen: (n) => (n === 1 ? "1 Platz frei" : `${n} Plätze frei`),
+    noOneYet: "Noch niemand",
+    signUp: "Eintragen",
+    typeNameFirst: "Bitte gib zuerst deinen Namen ein",
+    alreadySignedUp: (name) => `${name} ist hier schon eingetragen`,
+    signedUp: (name, role, day, time) => `✓ ${name} eingetragen: ${role}, ${day} ${time}`,
+    signupUndone: "Eintrag rückgängig gemacht",
+    removed: (name, role) => `${name} bei ${role} ausgetragen`,
+
+    print: "🖨️ Drucken",
+    legendFull: "Voll",
+    legendPartly: "Teilweise besetzt",
+    legendNobody: "Noch niemand",
+    time: "Uhrzeit",
+    nOpenParen: (n) => `(${n} frei)`,
+
+    pwEdit: "Gib das Admin-Passwort ein, um die Schichten zu bearbeiten.",
+    confirmEdit: "Schichten bearbeiten? Änderungen betreffen alle, die sich eintragen.",
+    locked: "Schichten sind gesperrt",
+    lockedHint: "Die Schichten sind gesperrt, damit sie nicht aus Versehen geändert werden.",
+    editLayout: "Schichten bearbeiten",
+    rows: (n) => (n === 1 ? "1 Zeile" : `${n} Zeilen`),
+    saveLayout: "Speichern",
+    colRole: "Aufgabe",
+    colDate: "Datum",
+    colStart: "Beginn",
+    colEnd: "Ende",
+    colEndOptional: "Ende (optional)",
+    colSpots: "Plätze",
+    addRow: "+ Zeile hinzufügen",
+    signedUpCount: (n) => `${n} eingetragen`,
+    dupRow: "Zeile kopieren",
+    delRow: "Zeile löschen",
+    rolePh: "z. B. Bar",
+
+    qg: "⚡ Schnell anlegen",
+    show: "Anzeigen",
+    qgHint: "Legt für jeden Tag und jedes Zeitfenster eine Zeile an, z. B. Bar von 14:00 bis 22:00 in 2-Stunden-Schichten ergibt 14–16, 16–18, 18–20 und 20–22 Uhr.",
+    dateFrom: "Von (Datum)",
+    dateTo: "Bis (Datum)",
+    startTime: "Beginn",
+    endTime: "Ende",
+    slotLength: "Schichtlänge (Stunden)",
+    spotsPerSlot: "Plätze pro Schicht",
+    generate: "Zeilen anlegen",
+    qgErrRequired: "Aufgabe und Datum müssen ausgefüllt sein.",
+    qgErrDates: "„Bis“ darf nicht vor „Von“ liegen.",
+    qgErrTimes: "Das Ende muss nach dem Beginn liegen (am selben Tag).",
+    qgErrPositive: "Schichtlänge und Plätze müssen größer als 0 sein.",
+    qgErrTooLong: "Die Schichtlänge ist länger als das Zeitfenster.",
+    qgConfirmMany: (n) => `Das legt ${n} Zeilen an. Fortfahren?`,
+    qgAdded: (count, days, slots) => `${count} Zeilen angelegt (${days} Tage × ${slots} Schichten)`,
+    errDupes: "Einige Zeilen haben dieselbe Aufgabe, dasselbe Datum und denselben Beginn (markiert). Fass sie zusammen und erhöh stattdessen die Plätze.",
+    errRowFields: "Jede Zeile braucht Aufgabe, Datum und Beginn.",
+    confirmLost: (n) => `In den gelöschten Zeilen stehen ${n} Einträge, die mitgelöscht werden. Trotzdem speichern?`,
+    layoutSaved: "Schichten gespeichert",
+    confirmDiscard: "Ungespeicherte Änderungen verwerfen?",
+
+    versionsHint: "Jede Änderung wird als Version gespeichert (die letzten 100). Wiederherstellen legt selbst eine neue Version an und lässt sich also auch rückgängig machen.",
+    current: "aktuell",
+    restore: "Wiederherstellen",
+    confirmRestore: (n) => `Version #${n} wiederherstellen? Die aktuellen Schichten und Einträge werden ersetzt (auch das wird als Version gespeichert).`,
+    restored: (n) => `Version #${n} wiederhergestellt`,
+
+    field_planName: "Name des Plans",
+    field_role: "Aufgabe",
+    field_name: "Name",
+    err_notFound: "Nicht gefunden",
+    err_planNotFound: "Plan nicht gefunden",
+    err_shiftNotFound: "Schicht nicht gefunden",
+    err_signupNotFound: "Eintrag nicht gefunden",
+    err_versionNotFound: "Version nicht gefunden",
+    err_full: "Diese Schicht ist schon voll",
+    err_wrongPassword: "Falsches Admin-Passwort",
+    err_required: ({ field }) => `„${t(`field_${field}`)}“ fehlt`,
+    err_tooLong: ({ field, max }) => `„${t(`field_${field}`)}“ ist zu lang (max. ${max} Zeichen)`,
+    err_rowDate: ({ row }) => `Zeile ${row}: ungültiges Datum`,
+    err_rowStart: ({ row }) => `Zeile ${row}: ungültiger Beginn`,
+    err_rowEnd: ({ row }) => `Zeile ${row}: ungültiges Ende`,
+    err_rowCapacity: ({ row }) => `Zeile ${row}: Plätze müssen eine ganze Zahl von 1 bis 1000 sein`,
+    err_badRequest: "Ungültige Anfrage",
+    err_internal: "Interner Fehler",
+  },
+};
+
+const LANGS = ["de", "en"];
+
+function initialLang() {
+  try {
+    const saved = localStorage.getItem("shiftPlanner.lang");
+    if (LANGS.includes(saved)) return saved;
+  } catch {
+    /* storage unavailable */
+  }
+  return (navigator.languages || [navigator.language]).some((l) => /^de\b/i.test(l)) ? "de" : "en";
+}
+
+let lang = initialLang();
+
+function setLang(next) {
+  lang = next;
+  try {
+    localStorage.setItem("shiftPlanner.lang", next);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// t("key") or t("key", ...args) for function entries; falls back to English, then to the key.
+function t(key, ...args) {
+  const value = STRINGS[lang][key] ?? STRINGS.en[key];
+  if (value === undefined) return key;
+  return typeof value === "function" ? value(...args) : value;
+}
+
+// Locale for dates and times: 24h clock in both languages.
+function locale() {
+  return lang === "de" ? "de-DE" : "en-GB";
+}
+
+// Version descriptions are stored in English; names, roles and times inside them stay as they are.
+const VERSION_DE = [
+  [/^Plan created$/, () => "Plan angelegt"],
+  [/^Layout saved \((\d+) shifts\)$/, (m) => `Schichten gespeichert (${m[1]} Schichten)`],
+  [/^Restored version #(\d+)$/, (m) => `Version #${m[1]} wiederhergestellt`],
+  [/^Duplicated from "(.*)"$/, (m) => `Kopiert von „${m[1]}“`],
+];
+
+function translateVersion(description) {
+  if (lang !== "de" || !description) return description;
+  for (const [re, fn] of VERSION_DE) {
+    const m = description.match(re);
+    if (m) return fn(m);
+  }
+  return description;
+}

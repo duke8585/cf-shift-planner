@@ -8,10 +8,13 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 // Sent with every API response so open tabs notice a new deploy and offer a reload.
 let appVersion = "";
 
+// `code` (+ `params`) lets the frontend show the message in the user's language; `message` stays English.
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code, params) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.params = params;
   }
 }
 
@@ -23,9 +26,9 @@ export default {
     try {
       return await route(request, env.DB, url.pathname.slice(4).split("/").filter(Boolean));
     } catch (err) {
-      if (err instanceof HttpError) return json({ error: err.message }, err.status);
+      if (err instanceof HttpError) return json({ error: err.message, code: err.code, params: err.params }, err.status);
       console.error(err);
-      return json({ error: "Internal error" }, 500);
+      return json({ error: "Internal error", code: "internal" }, 500);
     }
   },
 };
@@ -33,7 +36,7 @@ export default {
 async function route(request, db, parts) {
   const m = request.method;
   const [root, planId, sub, subId, action] = parts;
-  if (root !== "plans") throw new HttpError(404, "Not found");
+  if (root !== "plans") throw new HttpError(404, "Not found", "notFound");
 
   if (parts.length === 1) {
     if (m === "GET") return listPlans(db);
@@ -54,7 +57,7 @@ async function route(request, db, parts) {
     if (sub === "shifts" && action === "signup" && m === "POST") return signup(db, planId, subId, await body(request));
     if (sub === "versions" && action === "restore" && m === "POST") return restoreVersion(db, planId, subId, await body(request));
   }
-  throw new HttpError(404, "Not found");
+  throw new HttpError(404, "Not found", "notFound");
 }
 
 // ---------- handlers ----------
@@ -69,7 +72,7 @@ async function listPlans(db) {
 }
 
 async function createPlan(db, { name, adminPassword }) {
-  name = requireText(name, "Plan name", 200);
+  name = requireText(name, "Plan name", "planName", 200);
   const id = crypto.randomUUID();
   const now = nowIso();
   const hash = adminPassword ? await hashPassword(String(adminPassword)) : null;
@@ -83,7 +86,7 @@ async function createPlan(db, { name, adminPassword }) {
 
 async function duplicatePlan(db, planId, { name }) {
   const plan = await loadPlan(db, planId);
-  const newName = name ? requireText(name, "Plan name", 200) : `${plan.name} (copy)`;
+  const newName = name ? requireText(name, "Plan name", "planName", 200) : `${plan.name} (copy)`;
   const id = crypto.randomUUID();
   const now = nowIso();
   const { results: shifts } = await db.prepare("SELECT * FROM shifts WHERE plan_id = ?").bind(planId).all();
@@ -135,8 +138,8 @@ async function getPlan(db, planId) {
 async function saveShifts(db, planId, { shifts, adminPassword }) {
   const plan = await loadPlan(db, planId);
   await requireAdmin(plan, adminPassword);
-  if (!Array.isArray(shifts)) throw new HttpError(400, "shifts must be an array");
-  if (shifts.length > 2000) throw new HttpError(400, "Too many shifts");
+  if (!Array.isArray(shifts)) throw new HttpError(400, "shifts must be an array", "badRequest");
+  if (shifts.length > 2000) throw new HttpError(400, "Too many shifts", "badRequest");
 
   const { results: existing } = await db.prepare("SELECT id FROM shifts WHERE plan_id = ?").bind(planId).all();
   const existingIds = new Set(existing.map((r) => r.id));
@@ -144,14 +147,14 @@ async function saveShifts(db, planId, { shifts, adminPassword }) {
   const stmts = [];
 
   shifts.forEach((s, i) => {
-    const role = requireText(s.role, "Role", 100);
-    if (!DATE_RE.test(s.date || "")) throw new HttpError(400, `Row ${i + 1}: invalid date`);
-    if (!TIME_RE.test(s.startTime || "")) throw new HttpError(400, `Row ${i + 1}: invalid start time`);
+    const role = requireText(s.role, "Role", "role", 100);
+    if (!DATE_RE.test(s.date || "")) throw new HttpError(400, `Row ${i + 1}: invalid date`, "rowDate", { row: i + 1 });
+    if (!TIME_RE.test(s.startTime || "")) throw new HttpError(400, `Row ${i + 1}: invalid start time`, "rowStart", { row: i + 1 });
     const endTime = s.endTime || null;
-    if (endTime && !TIME_RE.test(endTime)) throw new HttpError(400, `Row ${i + 1}: invalid end time`);
+    if (endTime && !TIME_RE.test(endTime)) throw new HttpError(400, `Row ${i + 1}: invalid end time`, "rowEnd", { row: i + 1 });
     const capacity = Number(s.capacity);
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000) {
-      throw new HttpError(400, `Row ${i + 1}: capacity must be a whole number from 1 to 1000`);
+      throw new HttpError(400, `Row ${i + 1}: capacity must be a whole number from 1 to 1000`, "rowCapacity", { row: i + 1 });
     }
     if (s.id && existingIds.has(s.id) && !keptIds.has(s.id)) {
       keptIds.add(s.id);
@@ -178,9 +181,9 @@ async function saveShifts(db, planId, { shifts, adminPassword }) {
 }
 
 async function signup(db, planId, shiftId, { name }) {
-  name = requireText(name, "Name", 100);
+  name = requireText(name, "Name", "name", 100);
   const shift = await db.prepare("SELECT * FROM shifts WHERE id = ? AND plan_id = ?").bind(shiftId, planId).first();
-  if (!shift) throw new HttpError(404, "Shift not found");
+  if (!shift) throw new HttpError(404, "Shift not found", "shiftNotFound");
   const id = crypto.randomUUID();
   // Capacity check and insert in one statement, so concurrent sign-ups can't overfill a shift.
   const res = await db
@@ -191,7 +194,7 @@ async function signup(db, planId, shiftId, { name }) {
     )
     .bind(id, name, nowIso(), shiftId)
     .run();
-  if (!res.meta.changes) throw new HttpError(409, "This shift is already full");
+  if (!res.meta.changes) throw new HttpError(409, "This shift is already full", "full");
   await addVersion(db, planId, `${name} → ${describeShift(shift)}`);
   return json({ id, shiftId, name }, 201);
 }
@@ -204,7 +207,7 @@ async function removeSignup(db, planId, signupId) {
     )
     .bind(signupId, planId)
     .first();
-  if (!row) throw new HttpError(404, "Sign-up not found");
+  if (!row) throw new HttpError(404, "Sign-up not found", "signupNotFound");
   await db.prepare("DELETE FROM signups WHERE id = ?").bind(signupId).run();
   await addVersion(db, planId, `${row.name} ✗ ${describeShift(row)}`);
   return json({ success: true });
@@ -226,7 +229,7 @@ async function restoreVersion(db, planId, versionNumber, { adminPassword }) {
     .prepare("SELECT snapshot FROM versions WHERE plan_id = ? AND version_number = ?")
     .bind(planId, Number(versionNumber))
     .first();
-  if (!version) throw new HttpError(404, "Version not found");
+  if (!version) throw new HttpError(404, "Version not found", "versionNotFound");
   const snap = JSON.parse(version.snapshot);
   await db.batch([
     db.prepare("DELETE FROM signups WHERE shift_id IN (SELECT id FROM shifts WHERE plan_id = ?)").bind(planId),
@@ -246,7 +249,7 @@ async function restoreVersion(db, planId, versionNumber, { adminPassword }) {
 
 async function loadPlan(db, planId) {
   const plan = await db.prepare("SELECT * FROM plans WHERE id = ?").bind(planId).first();
-  if (!plan) throw new HttpError(404, "Plan not found");
+  if (!plan) throw new HttpError(404, "Plan not found", "planNotFound");
   return plan;
 }
 
@@ -298,7 +301,7 @@ function describeShift(s) {
 async function requireAdmin(plan, password) {
   if (!plan.admin_password_hash) return;
   if (!password || !(await checkPassword(String(password), plan.admin_password_hash))) {
-    throw new HttpError(403, "Wrong admin password");
+    throw new HttpError(403, "Wrong admin password", "wrongPassword");
   }
 }
 
@@ -324,10 +327,10 @@ function b64(bytes) {
   return btoa(String.fromCharCode(...bytes));
 }
 
-function requireText(value, label, maxLength) {
+function requireText(value, label, field, maxLength) {
   const text = typeof value === "string" ? value.trim() : "";
-  if (!text) throw new HttpError(400, `${label} is required`);
-  if (text.length > maxLength) throw new HttpError(400, `${label} is too long (max ${maxLength})`);
+  if (!text) throw new HttpError(400, `${label} is required`, "required", { field });
+  if (text.length > maxLength) throw new HttpError(400, `${label} is too long (max ${maxLength})`, "tooLong", { field, max: maxLength });
   return text;
 }
 
@@ -338,7 +341,7 @@ async function body(request) {
     const parsed = JSON.parse(text);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    throw new HttpError(400, "Invalid JSON body");
+    throw new HttpError(400, "Invalid JSON body", "badRequest");
   }
 }
 

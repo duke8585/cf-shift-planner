@@ -3,7 +3,7 @@
 No-login shift sign-up app. Cloudflare Worker (API) + D1 + vanilla JS frontend styled with Tailwind v4.
 `wrangler dev` / `wrangler deploy` run `npm run build` first (Tailwind CLI -> `public/styles.css`, self-hosted Inter -> `public/fonts/`, both gitignored).
 
-Live: https://shift-planner.rieger-max.workers.dev
+Live: https://shift-planner.egregore85.workers.dev
 
 ## Develop
 
