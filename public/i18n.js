@@ -172,7 +172,7 @@ const STRINGS = {
   },
 
   de: {
-    appName: "Viele Hände",
+    appName: "Many Hands",
     loading: "Lädt…",
     requestFailed: (status) => `Anfrage fehlgeschlagen (${status})`,
     updateAvailable: "Es gibt eine neue Version dieser Seite.",
