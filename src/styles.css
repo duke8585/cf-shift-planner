@@ -52,30 +52,22 @@
   .label { @apply flex flex-col gap-1.5 text-base font-semibold text-stone-700; }
 
   .pill {
-    @apply inline-flex max-w-full items-center gap-2 rounded-full bg-white py-1 pr-1 pl-1 text-base font-medium
+    @apply inline-flex max-w-full items-center gap-1.5 rounded-full bg-white py-0.5 pr-0.5 pl-0.5 text-sm font-medium
       text-stone-800 shadow-sm ring-1 ring-stone-200;
   }
-  .pill-static { @apply pr-3.5; }
+  .pill-static { @apply pr-2.5; }
   .pill-me { @apply ring-2 ring-stone-900; }
   .avatar {
-    @apply grid size-8 flex-none place-items-center rounded-full text-sm font-bold;
+    @apply grid size-6 flex-none place-items-center rounded-full text-[11px] font-bold;
     background: hsl(var(--h) 90% 88%);
     color: hsl(var(--h) 55% 28%);
   }
   .pill-x {
-    @apply grid size-8 flex-none cursor-pointer place-items-center rounded-full text-xl leading-none text-stone-500
+    @apply grid size-6 flex-none cursor-pointer place-items-center rounded-full text-lg leading-none text-stone-500
       transition hover:bg-rose-100 hover:text-rose-700;
   }
 
   .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-semibold whitespace-nowrap; }
-
-  /* Role color comes in as --role / --role-soft / --role-ink via inline style. */
-  .role-chip {
-    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-base font-bold;
-    background: var(--role-soft);
-    color: var(--role-ink);
-  }
-  .role-chip::before { content: ""; @apply size-2.5 rounded-full; background: var(--role); }
 }
 
 @keyframes nudge { 25% { translate: -6px 0; } 75% { translate: 6px 0; } }
@@ -108,7 +100,7 @@ html.printing {
   & th, & td { padding: 4pt 6pt !important; border-color: #a8a29e !important; }
   /* role stripe: a real border instead of the inset shadow used on screen */
   & td[style*="--role"] { border-left: 3pt solid var(--role) !important; }
-  & th[style*="--role"] { border-top: 3pt solid var(--role) !important; }
+  & th[style*="--role"] { border-left: 3pt solid var(--role) !important; }
   /* too big for one sheet: one sheet per day */
   &.print-per-day tr.day-row:not(:first-child) { break-before: page; }
   & .pill { --tw-ring-shadow: 0 0 #0000; padding: 0 !important; background: none; font-weight: 500; }

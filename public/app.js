@@ -183,9 +183,6 @@ function roleStyle(role, colors = state.roleColors) {
   return `--role:${dot};--role-soft:${soft};--role-ink:${ink}`;
 }
 
-function roleChip(role) {
-  return h("span", { class: "role-chip", style: roleStyle(role) }, role);
-}
 
 let toastTimer;
 function toast(message, action) {
@@ -671,31 +668,26 @@ function renderSignupList() {
 }
 
 function shiftItem(shift, people, showEnd) {
-  const left = shift.capacity - people.length;
-  const full = left <= 0;
-  const status = full
-    ? h("span", { class: "badge bg-emerald-100 text-emerald-800" }, t("full"))
-    : people.length
-      ? h("span", { class: "badge bg-amber-100 text-amber-900" }, t("spotsLeft", left, shift.capacity))
-      : h("span", { class: "badge bg-rose-100 text-rose-800" }, t("spotsOpen", shift.capacity));
+  const full = people.length >= shift.capacity;
+  const countColor = full ? "text-emerald-700" : people.length ? "text-amber-700" : "text-rose-700";
   return h("li", {
     class: full
-      ? "relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-3xl bg-emerald-50 py-5 pr-5 pl-7 ring-1 ring-emerald-200"
-      : "relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-3xl bg-white py-5 pr-5 pl-7 shadow-sm ring-1 ring-stone-200/80",
+      ? "relative flex flex-col gap-3 rounded-3xl bg-emerald-100/70 py-4 pr-5 pl-8 ring-1 ring-emerald-300"
+      : "relative flex flex-col gap-3 rounded-3xl bg-white py-4 pr-5 pl-8 shadow-sm ring-1 ring-stone-200/80",
     style: roleStyle(shift.role),
   },
-    h("span", { class: "absolute inset-y-0 left-0 w-2 bg-(--role)", "aria-hidden": "true" }),
-    h("div", { class: "flex min-w-0 flex-1 basis-72 flex-col gap-3" },
-      h("div", { class: "flex flex-wrap items-center gap-2" },
-        roleChip(shift.role),
-        showEnd && shift.endTime && h("span", { class: "font-semibold text-stone-500" }, t("shiftUntil", shift.endTime)),
-        status,
+    h("span", { class: "absolute inset-y-4 left-4 w-1.5 rounded-full bg-(--role)", "aria-hidden": "true" }),
+    h("div", { class: "flex items-baseline justify-between gap-3" },
+      h("h3", { class: "min-w-0 text-xl font-bold tracking-tight text-(--role-ink)" },
+        shift.role,
+        showEnd && shift.endTime && h("span", { class: "ml-2 font-semibold text-stone-500 italic" }, t("shiftUntil", shift.endTime)),
       ),
-      people.length
-        ? h("div", { class: "flex flex-wrap gap-2" }, people.map((u) => pill(u.name, () => removeSignup(shift, u))))
-        : h("span", { class: "text-base text-stone-500 italic" }, t("noOneYet")),
+      h("span", { class: `flex-none text-sm font-bold tabular-nums ${countColor}` }, `${people.length}/${shift.capacity}`),
     ),
-    !full && h("button", { class: "btn btn-primary min-w-36 text-lg max-sm:w-full", onclick: () => signUpMe(shift, people) }, t("signUp")),
+    (people.length || !full) && h("div", { class: "flex flex-wrap items-end justify-between gap-3" },
+      h("div", { class: "flex min-w-0 flex-1 flex-wrap gap-1.5" }, people.map((u) => pill(u.name, () => removeSignup(shift, u)))),
+      !full && h("button", { class: "btn btn-primary min-w-36 text-lg max-sm:w-full", onclick: () => signUpMe(shift, people) }, t("signUp")),
+    ),
   );
 }
 
@@ -821,7 +813,7 @@ function renderMatrix() {
           h("tr", null,
             h("th", { class: "sticky left-0 z-[1] border-b border-stone-200 bg-white px-3 py-3 text-base font-semibold text-stone-500 sm:px-4" }, t("time")),
             roles.map((r) =>
-              h("th", { class: "border-b border-l border-stone-200 border-t-4 border-t-(--role) px-3 py-3", style: roleStyle(r) }, roleChip(r)),
+              h("th", { class: "border-b border-l border-stone-200 px-3 py-3 text-lg font-bold tracking-tight text-(--role-ink) shadow-[inset_6px_0_0_var(--role)] sm:px-4", style: roleStyle(r) }, r),
             ),
           ),
         ),
