@@ -49,6 +49,7 @@ async function route(request, db, parts) {
   if (parts.length === 3) {
     if (sub === "duplicate" && m === "POST") return duplicatePlan(db, planId, await body(request));
     if (sub === "verify" && m === "POST") return verifyPlan(db, planId, await body(request));
+    if (sub === "archive" && m === "POST") return archivePlan(db, planId, await body(request));
     if (sub === "shifts" && m === "PUT") return saveShifts(db, planId, await body(request));
     if (sub === "versions" && m === "GET") return listVersions(db, planId);
   }
@@ -65,7 +66,7 @@ async function route(request, db, parts) {
 async function listPlans(db) {
   const { results } = await db
     .prepare(
-      "SELECT id, name, created_at, updated_at, admin_password_hash IS NOT NULL AS has_admin_password FROM plans ORDER BY created_at DESC",
+      "SELECT id, name, created_at, updated_at, archived_at, admin_password_hash IS NOT NULL AS has_admin_password FROM plans ORDER BY created_at DESC",
     )
     .all();
   return json({ plans: results });
@@ -76,9 +77,10 @@ async function createPlan(db, { name, adminPassword }) {
   const id = crypto.randomUUID();
   const now = nowIso();
   const hash = adminPassword ? await hashPassword(String(adminPassword)) : null;
+  const hint = adminPassword ? passwordHint(String(adminPassword)) : null;
   await db
-    .prepare("INSERT INTO plans (id, name, admin_password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, name, hash, now, now)
+    .prepare("INSERT INTO plans (id, name, admin_password_hash, admin_password_hint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, name, hash, hint, now, now)
     .run();
   await addVersion(db, id, "Plan created");
   return json({ id }, 201);
@@ -92,12 +94,20 @@ async function duplicatePlan(db, planId, { name }) {
   const { results: shifts } = await db.prepare("SELECT * FROM shifts WHERE plan_id = ?").bind(planId).all();
   await db.batch([
     db
-      .prepare("INSERT INTO plans (id, name, admin_password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(id, newName, plan.admin_password_hash, now, now),
+      .prepare("INSERT INTO plans (id, name, admin_password_hash, admin_password_hint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(id, newName, plan.admin_password_hash, plan.admin_password_hint, now, now),
     ...shifts.map((s) => insertShift(db, id, crypto.randomUUID(), s.role, s.date, s.start_time, s.end_time, s.capacity, s.sort_order)),
   ]);
   await addVersion(db, id, `Duplicated from "${plan.name}"`);
   return json({ id }, 201);
+}
+
+// `archived: false` unarchives. Only hides the plan from the list; the plan itself is unchanged.
+async function archivePlan(db, planId, { adminPassword, archived = true }) {
+  const plan = await loadPlan(db, planId);
+  await requireAdmin(plan, adminPassword);
+  await db.prepare("UPDATE plans SET archived_at = ? WHERE id = ?").bind(archived ? nowIso() : null, planId).run();
+  return json({ success: true });
 }
 
 async function deletePlan(db, planId, { adminPassword }) {
@@ -301,8 +311,15 @@ function describeShift(s) {
 async function requireAdmin(plan, password) {
   if (!plan.admin_password_hash) return;
   if (!password || !(await checkPassword(String(password), plan.admin_password_hash))) {
-    throw new HttpError(403, "Wrong admin password", "wrongPassword");
+    throw new HttpError(403, "Wrong admin password", "wrongPassword", { hint: plan.admin_password_hint });
   }
+}
+
+// "password" -> "p******d"; passwords of 3 characters or fewer are fully masked.
+function passwordHint(password) {
+  const chars = [...password];
+  if (chars.length <= 3) return "*".repeat(chars.length);
+  return chars[0] + "*".repeat(chars.length - 2) + chars[chars.length - 1];
 }
 
 async function hashPassword(password, salt = crypto.getRandomValues(new Uint8Array(16))) {

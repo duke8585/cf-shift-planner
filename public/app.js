@@ -107,6 +107,7 @@ async function api(method, path, body) {
     const message = data.code && STRINGS.en[`err_${data.code}`] ? t(`err_${data.code}`, data.params || {}) : data.error;
     const err = new Error(message || t("requestFailed", res.status));
     err.status = res.status;
+    err.params = data.params || {};
     throw err;
   }
   return data;
@@ -218,6 +219,7 @@ function askPassword({ title, text, verify }) {
   document.getElementById("modal-text").textContent = text;
   input.value = "";
   error.hidden = true;
+  let fails = 0;
 
   return new Promise((resolve) => {
     const onSubmit = async (e) => {
@@ -230,7 +232,9 @@ function askPassword({ title, text, verify }) {
         dialog.close();
         resolve(pw);
       } catch (err) {
-        error.textContent = err.message;
+        // From the 3rd wrong try on, show the masked hint (plans created before hints existed have none).
+        const hint = ++fails >= 3 && err.params?.hint;
+        error.textContent = hint ? `${err.message}. ${t("pwHint", hint)}` : err.message;
         error.hidden = false;
         input.select();
       }
@@ -373,14 +377,27 @@ async function renderHome() {
 
   try {
     const { plans } = await api("GET", "/plans");
-    list.replaceChildren(...(plans.length ? plans.map(planCard) : [h("p", { class: "text-stone-500" }, t("noPlans"))]));
+    const active = plans.filter((p) => !p.archived_at);
+    const archived = plans.filter((p) => p.archived_at);
+    list.replaceChildren(...(active.length ? active.map(planCard) : [h("p", { class: "text-stone-500" }, t("noPlans"))]));
+    if (archived.length) {
+      app.append(
+        h("button", {
+          class: "mt-10 cursor-pointer text-base font-semibold text-stone-500 underline-offset-4 hover:text-stone-800 hover:underline",
+          onclick: () => ((state.showArchived = !state.showArchived), renderHome()),
+        }, state.showArchived ? t("hideArchived") : t("showArchived", archived.length)),
+        state.showArchived && h("div", { class: "mt-4 grid gap-4 sm:grid-cols-2" }, archived.map(planCard)),
+      );
+    }
   } catch (err) {
     list.replaceChildren(h("p", { class: "font-semibold text-rose-700" }, err.message));
   }
 }
 
 function planCard(plan) {
-  return h("div", { class: "card flex flex-col gap-4" },
+  const auth = { id: plan.id, hasAdminPassword: !!plan.has_admin_password };
+  const archived = !!plan.archived_at;
+  return h("div", { class: archived ? "card flex flex-col gap-4 bg-stone-100" : "card flex flex-col gap-4" },
     h("div", null,
       h("a", { class: "text-xl font-bold tracking-tight hover:text-orange-700", href: `#/plan/${plan.id}` }, plan.name, plan.has_admin_password ? " 🔒" : ""),
       h("p", { class: "mt-1 text-base text-stone-600" },
@@ -389,7 +406,7 @@ function planCard(plan) {
       ),
       h("p", { class: "text-sm text-stone-500" }, t("created", fmtWhen(plan.created_at))),
     ),
-    h("div", { class: "mt-auto grid grid-cols-3 gap-2" },
+    h("div", { class: "mt-auto grid grid-cols-2 gap-2" },
       h("a", { class: "btn btn-sm btn-primary px-2", href: `#/plan/${plan.id}` }, t("open")),
       h("button", {
         class: "btn btn-sm px-2",
@@ -406,12 +423,23 @@ function planCard(plan) {
         },
       }, t("duplicate")),
       h("button", {
+        class: "btn btn-sm px-2",
+        onclick: async () => {
+          const pw = await adminAuth(auth, archived ? t("confirmUnarchive", plan.name) : t("confirmArchive", plan.name));
+          if (pw === null) return;
+          try {
+            await api("POST", `/plans/${plan.id}/archive`, { adminPassword: pw || undefined, archived: !archived });
+            toast(archived ? t("unarchivedToast") : t("archivedToast"));
+            renderHome();
+          } catch (err) {
+            showError(err);
+          }
+        },
+      }, archived ? t("unarchive") : t("archive")),
+      h("button", {
         class: "btn btn-sm btn-danger px-2",
         onclick: async () => {
-          const pw = await adminAuth(
-            { id: plan.id, hasAdminPassword: !!plan.has_admin_password },
-            t("confirmDelete", plan.name),
-          );
+          const pw = await adminAuth(auth, t("confirmDelete", plan.name));
           if (pw === null) return;
           try {
             await api("DELETE", `/plans/${plan.id}`, { adminPassword: pw || undefined });
