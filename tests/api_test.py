@@ -1,4 +1,4 @@
-"""End-to-end API test for shift-planner. Creates its own plans and deletes them again.
+"""End-to-end API test for many-hands. Creates its own plans and deletes them again.
 
 Usage: python3 tests/api_test.py <base_url>   (e.g. http://localhost:8787 with `npm run dev` running)
 """
@@ -18,7 +18,7 @@ failures: list[str] = []
 def call(method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
     """Send a JSON request to the API and return (status, parsed body), also for error statuses."""
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(BASE + path, data=data, method=method, headers={"content-type": "application/json", "user-agent": "shift-planner-smoke/1.0"})
+    req = urllib.request.Request(BASE + path, data=data, method=method, headers={"content-type": "application/json", "user-agent": "many-hands-test/1.0"})
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read() or b"{}")

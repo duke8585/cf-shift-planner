@@ -4,7 +4,7 @@
 // German uses "du" (informal), as for a neighbourhood / volunteer event.
 const STRINGS = {
   en: {
-    appName: "Shift Planner",
+    appName: "Many Hands",
     loading: "Loading…",
     requestFailed: (status) => `Request failed (${status})`,
     updateAvailable: "A new version of this page is available.",
@@ -172,7 +172,7 @@ const STRINGS = {
   },
 
   de: {
-    appName: "Schichtplaner",
+    appName: "Viele Hände",
     loading: "Lädt…",
     requestFailed: (status) => `Anfrage fehlgeschlagen (${status})`,
     updateAvailable: "Es gibt eine neue Version dieser Seite.",

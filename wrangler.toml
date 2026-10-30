@@ -1,4 +1,4 @@
-name = "shift-planner"
+name = "many-hands"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
 

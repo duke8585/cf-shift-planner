@@ -20,7 +20,7 @@ function check(label, cond, detail = "") {
 async function api(method, path, body) {
   const res = await fetch(`${BASE}/api${path}`, {
     method,
-    headers: { "content-type": "application/json", "user-agent": "shift-planner-ui-test/1.0" },
+    headers: { "content-type": "application/json", "user-agent": "many-hands-ui-test/1.0" },
     body: body ? JSON.stringify(body) : undefined,
   });
   return res.json();

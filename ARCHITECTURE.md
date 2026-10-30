@@ -3,7 +3,7 @@
 ## Cloudflare setup
 
 ```
-browser ──► Worker "shift-planner" (shift-planner.egregore85.workers.dev)
+browser ──► Worker "many-hands" (many-hands.egregore85.workers.dev)
               ├─ /api/*      → src/worker.js (JSON API) ──► D1 "shift-planner-db"
               └─ everything else → static assets from public/ (ASSETS binding)
 ```
@@ -11,9 +11,9 @@ browser ──► Worker "shift-planner" (shift-planner.egregore85.workers.dev)
 | Piece | What / where |
 |---|---|
 | Account | `c43ee795740454fb0525da8e7a0f5970`, workers.dev subdomain `egregore85` (account-wide, shared by all Workers) |
-| Worker | `shift-planner`, single file `src/worker.js`, no runtime deps |
+| Worker | `many-hands` (was `shift-planner`), single file `src/worker.js`, no runtime deps |
 | Static assets | `public/` via `[assets]`; `run_worker_first = ["/api/*"]` so only the API hits the Worker; SPA fallback to `index.html` |
-| Database | D1 `shift-planner-db` (`c4d9e25d-…`, WEUR), binding `DB` |
+| Database | D1 `shift-planner-db` (old name kept, D1 can't be renamed; `c4d9e25d-…`, WEUR), binding `DB` |
 | Schema | `migrations/` applied with `wrangler d1 migrations apply` (tracked in `d1_migrations`) |
 | Build | wrangler `[build]` runs `npm run build` before dev/deploy: Tailwind v4 CLI → `public/styles.css`, Inter woff2 → `public/fonts/` (both gitignored) |
 | Versioning | `[version_metadata]` binding → every API response carries `x-app-version`; open tabs show a reload banner after a deploy |
@@ -41,6 +41,8 @@ Deploy: `npm run db:migrate:remote` (only if `migrations/` changed), then `npm r
 - **Self-hosted font** (no Google Fonts, GDPR).
 
 ## Gotchas learned
+
+- Renaming a Worker = deploying under a new `name`: it creates a second Worker with a new URL; the old one keeps running until deleted. Both can share the same D1.
 
 - Changing the workers.dev subdomain: no wrangler command, and the API can't rename in place. Use `DELETE` then `PUT /accounts/:id/workers/subdomain`, then redeploy. All old links die, and the new TLS cert can take a few minutes.
 - Cloudflare's bot protection blocks the default `Python-urllib` user agent (error 1010). Set a user agent in scripts.

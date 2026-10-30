@@ -1,5 +1,5 @@
 {
-  "name": "shift-planner",
+  "name": "many-hands",
   "private": true,
   "scripts": {
     "build": "mkdir -p public/fonts && cp node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2 node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2 public/fonts/ && tailwindcss -i src/styles.css -o public/styles.css --minify",

@@ -1,4 +1,4 @@
-// Shift Planner API. Everything outside /api/* is served from ./public by the assets binding.
+// Many Hands API. Everything outside /api/* is served from ./public by the assets binding.
 
 const MAX_VERSIONS = 100;
 const PBKDF2_ITERATIONS = 100_000; // Workers caps PBKDF2 at 100k
