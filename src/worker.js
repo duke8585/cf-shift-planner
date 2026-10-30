@@ -44,6 +44,7 @@ async function route(request, db, parts) {
   }
   if (parts.length === 2) {
     if (m === "GET") return getPlan(db, planId);
+    if (m === "PATCH") return updatePlan(db, planId, await body(request));
     if (m === "DELETE") return deletePlan(db, planId, await body(request));
   }
   if (parts.length === 3) {
@@ -86,33 +87,77 @@ async function createPlan(db, { name, adminPassword }) {
   return json({ id }, 201);
 }
 
-async function duplicatePlan(db, planId, { name }) {
+// The copy gets its own (optional) password; the source password is never carried over.
+// `withSignups` also copies the sign-ups and the version history; otherwise only the shifts.
+async function duplicatePlan(db, planId, { name, adminPassword, withSignups = false }) {
   const plan = await loadPlan(db, planId);
   const newName = name ? requireText(name, "Plan name", "planName", 200) : `${plan.name} (copy)`;
   const id = crypto.randomUUID();
   const now = nowIso();
-  const { results: shifts } = await db.prepare("SELECT * FROM shifts WHERE plan_id = ?").bind(planId).all();
-  await db.batch([
+  const hash = adminPassword ? await hashPassword(String(adminPassword)) : null;
+  const hint = adminPassword ? passwordHint(String(adminPassword)) : null;
+  const { shifts, signups } = await loadState(db, planId);
+  // Every shift/sign-up id (also those only in old snapshots) gets one new id, so restoring
+  // a copied version in the copy never touches the original's rows.
+  const ids = new Map();
+  const newId = (old) => ids.get(old) ?? ids.set(old, crypto.randomUUID()).get(old);
+  const stmts = [
     db
-      .prepare("INSERT INTO plans (id, name, admin_password_hash, admin_password_hint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, newName, plan.admin_password_hash, plan.admin_password_hint, now, now),
-    ...shifts.map((s) => insertShift(db, id, crypto.randomUUID(), s.role, s.date, s.start_time, s.end_time, s.capacity, s.sort_order)),
-  ]);
+      .prepare(
+        "INSERT INTO plans (id, name, description, admin_password_hash, admin_password_hint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(id, newName, plan.description, hash, hint, now, now),
+    ...shifts.map((s) => insertShift(db, id, newId(s.id), s.role, s.date, s.start_time, s.end_time, s.capacity, s.sort_order)),
+  ];
+  if (withSignups) {
+    stmts.push(
+      ...signups.map((u) =>
+        db.prepare("INSERT INTO signups (id, shift_id, name, created_at) VALUES (?, ?, ?, ?)").bind(newId(u.id), newId(u.shift_id), u.name, u.created_at),
+      ),
+    );
+    const { results: versions } = await db.prepare("SELECT * FROM versions WHERE plan_id = ?").bind(planId).all();
+    for (const v of versions) {
+      const snap = JSON.parse(v.snapshot);
+      snap.shifts = snap.shifts.map((s) => ({ ...s, id: newId(s.id), plan_id: id }));
+      snap.signups = snap.signups.map((u) => ({ ...u, id: newId(u.id), shift_id: newId(u.shift_id) }));
+      stmts.push(
+        db
+          .prepare("INSERT INTO versions (id, plan_id, version_number, snapshot, description, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(crypto.randomUUID(), id, v.version_number, JSON.stringify(snap), v.description, v.created_at),
+      );
+    }
+  }
+  await db.batch(stmts);
   await addVersion(db, id, `Duplicated from "${plan.name}"`);
   return json({ id }, 201);
+}
+
+async function updatePlan(db, planId, { name, description, adminPassword }) {
+  const plan = await loadPlan(db, planId);
+  await requireAdmin(db, plan, adminPassword);
+  name = requireText(name, "Plan name", "planName", 200);
+  description = typeof description === "string" ? description.trim() : "";
+  if (description.length > 2000) {
+    throw new HttpError(400, "Description is too long (max 2000)", "tooLong", { field: "description", max: 2000 });
+  }
+  await db
+    .prepare("UPDATE plans SET name = ?, description = ?, updated_at = ? WHERE id = ?")
+    .bind(name, description || null, nowIso(), planId)
+    .run();
+  return json({ success: true });
 }
 
 // `archived: false` unarchives. Only hides the plan from the list; the plan itself is unchanged.
 async function archivePlan(db, planId, { adminPassword, archived = true }) {
   const plan = await loadPlan(db, planId);
-  await requireAdmin(plan, adminPassword);
+  await requireAdmin(db, plan, adminPassword);
   await db.prepare("UPDATE plans SET archived_at = ? WHERE id = ?").bind(archived ? nowIso() : null, planId).run();
   return json({ success: true });
 }
 
 async function deletePlan(db, planId, { adminPassword }) {
   const plan = await loadPlan(db, planId);
-  await requireAdmin(plan, adminPassword);
+  await requireAdmin(db, plan, adminPassword);
   await db.batch([
     db.prepare("DELETE FROM signups WHERE shift_id IN (SELECT id FROM shifts WHERE plan_id = ?)").bind(planId),
     db.prepare("DELETE FROM shifts WHERE plan_id = ?").bind(planId),
@@ -123,7 +168,7 @@ async function deletePlan(db, planId, { adminPassword }) {
 }
 
 async function verifyPlan(db, planId, { adminPassword }) {
-  await requireAdmin(await loadPlan(db, planId), adminPassword);
+  await requireAdmin(db, await loadPlan(db, planId), adminPassword);
   return json({ success: true });
 }
 
@@ -131,7 +176,13 @@ async function getPlan(db, planId) {
   const plan = await loadPlan(db, planId);
   const { shifts, signups } = await loadState(db, planId);
   return json({
-    plan: { id: plan.id, name: plan.name, hasAdminPassword: !!plan.admin_password_hash, createdAt: plan.created_at },
+    plan: {
+      id: plan.id,
+      name: plan.name,
+      description: plan.description || "",
+      hasAdminPassword: !!plan.admin_password_hash,
+      createdAt: plan.created_at,
+    },
     shifts: shifts.map((s) => ({
       id: s.id,
       role: s.role,
@@ -147,7 +198,7 @@ async function getPlan(db, planId) {
 
 async function saveShifts(db, planId, { shifts, adminPassword }) {
   const plan = await loadPlan(db, planId);
-  await requireAdmin(plan, adminPassword);
+  await requireAdmin(db, plan, adminPassword);
   if (!Array.isArray(shifts)) throw new HttpError(400, "shifts must be an array", "badRequest");
   if (shifts.length > 2000) throw new HttpError(400, "Too many shifts", "badRequest");
 
@@ -234,7 +285,7 @@ async function listVersions(db, planId) {
 
 async function restoreVersion(db, planId, versionNumber, { adminPassword }) {
   const plan = await loadPlan(db, planId);
-  await requireAdmin(plan, adminPassword);
+  await requireAdmin(db, plan, adminPassword);
   const version = await db
     .prepare("SELECT snapshot FROM versions WHERE plan_id = ? AND version_number = ?")
     .bind(planId, Number(versionNumber))
@@ -308,10 +359,14 @@ function describeShift(s) {
   return `${s.role}, ${s.date} ${s.start_time}${s.end_time ? `-${s.end_time}` : ""}`;
 }
 
-async function requireAdmin(plan, password) {
+async function requireAdmin(db, plan, password) {
   if (!plan.admin_password_hash) return;
   if (!password || !(await checkPassword(String(password), plan.admin_password_hash))) {
     throw new HttpError(403, "Wrong admin password", "wrongPassword", { hint: plan.admin_password_hint });
+  }
+  // Plans created before hints existed get one the first time the right password is entered.
+  if (!plan.admin_password_hint) {
+    await db.prepare("UPDATE plans SET admin_password_hint = ? WHERE id = ?").bind(passwordHint(String(password)), plan.id).run();
   }
 }
 

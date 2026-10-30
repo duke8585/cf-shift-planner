@@ -23,12 +23,13 @@ Deploy: `npm run db:migrate:remote` (only if `migrations/` changed), then `npm r
 
 ## Data model
 
-`plans` 1─n `shifts` 1─n `signups`, plus `plans` 1─n `versions` (full JSON snapshot of shifts + signups after every change, last 100 kept). `shifts.end_time` is optional (multi-hour cells in the overview).
+`plans` (name, optional description, password hash + hint, archived_at) 1─n `shifts` 1─n `signups`, plus `plans` 1─n `versions` (full JSON snapshot of shifts + signups after every change, last 100 kept). `shifts.end_time` is optional (multi-hour cells in the overview).
 
 ## Design decisions
 
 - **No accounts.** People type their name; anyone with the link can sign up or remove. Versioning is the safety net, and the organizer can restore any version.
-- **Optional admin password per plan** (PBKDF2-SHA256, salted, 100k iterations, the Workers maximum) guards layout edits, restore and delete only.
+- **Optional admin password per plan** (PBKDF2-SHA256, salted, 100k iterations, the Workers maximum) guards layout edits, restore, archive and delete only. Archive/unarchive/delete always re-ask it; delete also confirms twice. A masked hint (`l******2`) is stored next to the hash and shown after 3 wrong tries; older plans get one the first time the right password is entered. Copies never inherit the password; the copier sets a new one. A copy is either shifts only (fresh history) or shifts + sign-ups + version history; all shift/sign-up ids, also inside copied snapshots, are remapped so restoring in the copy never touches the original.
+- **Archive = hidden from the list**, not locked: the plan still works via its link.
 - **Capacity check is one SQL statement** (`INSERT … SELECT … WHERE count < capacity`), so concurrent sign-ups can't overfill a shift.
 - **Snapshots over diffs.** Plans are small; a full snapshot per change is simple and restores exactly.
 - **Layout save is a batch replace.** Shifts matched by id keep their sign-ups; removed shifts drop theirs (the UI warns first).

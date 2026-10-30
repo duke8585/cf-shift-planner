@@ -31,6 +31,7 @@ const state = {
   me: getLastName(), // name used for "Sign up" buttons, remembered across visits
   onlyOpen: false,
   passwords: new Map(), // planId -> admin password, kept in memory for this page load only
+  pwFails: new Map(), // planId -> wrong admin password tries this page load (hint from the 3rd on)
   autoUnlock: null, // planId whose builder opens unlocked (right after creating it)
   appVersion: null, // deploy version seen on first API call
 };
@@ -210,7 +211,7 @@ function showError(err) {
 }
 
 // Password modal. `verify(pw)` should throw on a wrong password; the modal stays open and shows the error.
-function askPassword({ title, text, verify }) {
+function askPassword({ title, text, verify, planId }) {
   const dialog = document.getElementById("modal");
   const form = dialog.querySelector("form");
   const input = document.getElementById("modal-input");
@@ -219,7 +220,6 @@ function askPassword({ title, text, verify }) {
   document.getElementById("modal-text").textContent = text;
   input.value = "";
   error.hidden = true;
-  let fails = 0;
 
   return new Promise((resolve) => {
     const onSubmit = async (e) => {
@@ -233,7 +233,9 @@ function askPassword({ title, text, verify }) {
         resolve(pw);
       } catch (err) {
         // From the 3rd wrong try on, show the masked hint (plans created before hints existed have none).
-        const hint = ++fails >= 3 && err.params?.hint;
+        const fails = (state.pwFails.get(planId) || 0) + 1;
+        state.pwFails.set(planId, fails);
+        const hint = fails >= 3 && err.params?.hint;
         error.textContent = hint ? `${err.message}. ${t("pwHint", hint)}` : err.message;
         error.hidden = false;
         input.select();
@@ -255,14 +257,16 @@ function askPassword({ title, text, verify }) {
 }
 
 // Returns the admin password to send (or "" if the plan has none), or null if the user cancelled.
-async function adminAuth(plan, confirmText) {
+// `alwaysAsk` ignores a password remembered from earlier in this page load.
+async function adminAuth(plan, confirmText, alwaysAsk = false) {
   if (!plan.hasAdminPassword) return confirm(confirmText) ? "" : null;
   const known = state.passwords.get(plan.id);
-  if (known) return confirm(confirmText) ? known : null;
+  if (known && !alwaysAsk) return confirm(confirmText) ? known : null;
   const pw = await askPassword({
     title: t("adminPassword"),
     text: confirmText,
     verify: (p) => api("POST", `/plans/${plan.id}/verify`, { adminPassword: p }),
+    planId: plan.id,
   });
   if (pw) state.passwords.set(plan.id, pw);
   return pw;
@@ -386,7 +390,7 @@ async function renderHome() {
           class: "mt-10 cursor-pointer text-base font-semibold text-stone-500 underline-offset-4 hover:text-stone-800 hover:underline",
           onclick: () => ((state.showArchived = !state.showArchived), renderHome()),
         }, state.showArchived ? t("hideArchived") : t("showArchived", archived.length)),
-        state.showArchived && h("div", { class: "mt-4 grid gap-4 sm:grid-cols-2" }, archived.map(planCard)),
+        state.showArchived ? h("div", { class: "mt-4 grid gap-4 sm:grid-cols-2" }, archived.map(planCard)) : "",
       );
     }
   } catch (err) {
@@ -410,22 +414,12 @@ function planCard(plan) {
       h("a", { class: "btn btn-sm btn-primary px-2", href: `#/plan/${plan.id}` }, t("open")),
       h("button", {
         class: "btn btn-sm px-2",
-        onclick: async () => {
-          const name = prompt(t("copyNamePrompt"), t("copyName", plan.name));
-          if (name === null) return;
-          try {
-            await api("POST", `/plans/${plan.id}/duplicate`, { name });
-            toast(t("duplicated"));
-            renderHome();
-          } catch (err) {
-            showError(err);
-          }
-        },
+        onclick: () => copyDialog(plan),
       }, t("duplicate")),
       h("button", {
         class: "btn btn-sm px-2",
         onclick: async () => {
-          const pw = await adminAuth(auth, archived ? t("confirmUnarchive", plan.name) : t("confirmArchive", plan.name));
+          const pw = await adminAuth(auth, archived ? t("confirmUnarchive", plan.name) : t("confirmArchive", plan.name), true);
           if (pw === null) return;
           try {
             await api("POST", `/plans/${plan.id}/archive`, { adminPassword: pw || undefined, archived: !archived });
@@ -439,8 +433,8 @@ function planCard(plan) {
       h("button", {
         class: "btn btn-sm btn-danger px-2",
         onclick: async () => {
-          const pw = await adminAuth(auth, t("confirmDelete", plan.name));
-          if (pw === null) return;
+          const pw = await adminAuth(auth, t("confirmDelete", plan.name), true);
+          if (pw === null || !confirm(t("confirmDeleteAgain", plan.name))) return;
           try {
             await api("DELETE", `/plans/${plan.id}`, { adminPassword: pw || undefined });
             toast(t("deleted"));
@@ -452,6 +446,94 @@ function planCard(plan) {
       }, t("delete")),
     ),
   );
+}
+
+// Modal form built on the fly. `submit()` runs on OK; the dialog closes when it doesn't throw.
+function formDialog({ title, fields, okLabel, submit }) {
+  const dialog = h("dialog", { class: "m-auto w-[min(30rem,calc(100%-2rem))] rounded-3xl p-0 shadow-2xl backdrop:bg-stone-900/50 backdrop:backdrop-blur-sm" },
+    h("form", {
+      class: "flex flex-col gap-4 p-6",
+      onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await submit();
+          dialog.close();
+        } catch (err) {
+          showError(err);
+        }
+      },
+    },
+      h("h3", { class: "text-xl font-bold" }, title),
+      fields,
+      h("div", { class: "flex justify-end gap-3" },
+        h("button", { type: "button", class: "btn", onclick: () => dialog.close() }, t("cancel")),
+        h("button", { class: "btn btn-primary" }, okLabel),
+      ),
+    ),
+  );
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector("input, textarea")?.select();
+}
+
+// Name, what to copy, and the copy's own optional admin password (the source password is not carried over).
+function copyDialog(plan) {
+  const nameInput = h("input", { class: "input", required: true, maxlength: 200, value: t("copyName", plan.name) });
+  const pwInput = h("input", { class: "input", type: "password", placeholder: t("optional"), autocomplete: "new-password" });
+  const option = (value, label, checked) =>
+    h("label", { class: "flex min-h-11 cursor-pointer items-center gap-3 font-medium" },
+      h("input", { type: "radio", name: "copy-what", value, checked, class: "size-5 flex-none accent-stone-900" }),
+      label,
+    );
+  const what = h("fieldset", { class: "flex flex-col gap-1" },
+    h("legend", { class: "mb-1 text-base font-semibold text-stone-700" }, t("copyWhat")),
+    option("shifts", t("copyShiftsOnly"), true),
+    option("all", t("copyWithPeople"), false),
+  );
+  formDialog({
+    title: t("copyTitle"),
+    okLabel: t("duplicate"),
+    fields: [
+      h("label", { class: "label" }, t("planName"), nameInput),
+      what,
+      h("label", { class: "label" }, t("adminPassword"), pwInput),
+      h("p", { class: "text-base text-stone-600" }, t("copyPwNote")),
+    ],
+    submit: async () => {
+      const withSignups = what.querySelector("input:checked").value === "all";
+      await api("POST", `/plans/${plan.id}/duplicate`, { name: nameInput.value, adminPassword: pwInput.value || undefined, withSignups });
+      toast(withSignups ? t("duplicatedAll") : t("duplicated"));
+      renderHome();
+    },
+  });
+}
+
+// Name + description. Asks for the admin password first (remembered for this page load).
+async function editDetails(plan) {
+  let pw = "";
+  if (plan.hasAdminPassword) {
+    pw = state.passwords.get(plan.id) ?? (await askPassword({
+      title: t("adminPassword"),
+      text: t("pwEditDetails"),
+      verify: (p) => api("POST", `/plans/${plan.id}/verify`, { adminPassword: p }),
+      planId: plan.id,
+    }));
+    if (pw === null) return;
+    state.passwords.set(plan.id, pw);
+  }
+  const nameInput = h("input", { class: "input", required: true, maxlength: 200, value: plan.name });
+  const descInput = h("textarea", { class: "input min-h-32 py-3", maxlength: 2000, placeholder: t("descriptionPh") }, plan.description);
+  formDialog({
+    title: t("editDetails"),
+    okLabel: t("save"),
+    fields: [h("label", { class: "label" }, t("planName"), nameInput), h("label", { class: "label" }, t("description"), descInput)],
+    submit: async () => {
+      await api("PATCH", `/plans/${plan.id}`, { name: nameInput.value, description: descInput.value, adminPassword: pw || undefined });
+      toast(t("detailsSaved"));
+      await refreshPlan();
+    },
+  });
 }
 
 // ---------- plan view ----------
@@ -493,8 +575,10 @@ function renderPlan() {
   app.replaceChildren(
     h("a", { class: "no-print inline-flex min-h-10 items-center text-base font-semibold text-stone-600 hover:text-stone-900", href: "#/" }, t("allPlans")),
     h("h1", { class: "mt-1 text-3xl font-bold tracking-tight sm:text-4xl" }, plan.name, plan.hasAdminPassword ? h("span", { class: "no-print" }, " 🔒") : ""),
+    plan.description && h("p", { class: "mt-3 max-w-prose text-lg whitespace-pre-line text-stone-700" }, plan.description),
     h("div", { class: "no-print mt-3 flex flex-wrap items-center gap-3 text-base text-stone-500" },
       t("created", fmtWhen(plan.createdAt)),
+      h("button", { class: "btn btn-sm", onclick: () => editDetails(plan) }, t("editDetails")),
       h("button", {
         class: "btn btn-sm",
         onclick: async () => {
